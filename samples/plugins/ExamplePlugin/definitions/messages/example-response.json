@@ -1,0 +1,14 @@
+{
+  "SchemaVersion": 1,
+  "Id": "example.term-response",
+  "Name": "Synthetic Term response example",
+  "SpecVersion": "demo-1",
+  "Fields": [
+    { "Id": "mti", "Name": "Message type", "Labels": ["Msg-type"], "Type": "digits", "Length": 4, "Description": "Identifies the synthetic message type." },
+    { "Id": "39", "Name": "Response code", "Labels": ["Resp code"], "Type": "digits", "Length": 2, "Decoder": "example.response", "Description": "Example response indicator. This demo defines 00 and 05 only." }
+  ],
+  "Messages": {
+    "0210": { "Name": "Demo response", "Role": "reply", "Replies": [], "Fields": [{ "Field": "mti", "Usage": "M" }, { "Field": "39", "Usage": "M" }] }
+  },
+  "TransactionTypes": {}, "Accounts": {}, "SourceAccountRequiredFor": [], "DestinationAccountRequiredFor": []
+}

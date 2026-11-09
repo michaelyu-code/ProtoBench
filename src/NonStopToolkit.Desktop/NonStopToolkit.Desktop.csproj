@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+        <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion><UseWinUI>true</UseWinUI>
+        <WindowsPackageType>None</WindowsPackageType><WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+        <Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget><RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <AssemblyName>ProtoBench</AssemblyName><AssemblyTitle>ProtoBench</AssemblyTitle><Product>ProtoBench</Product>
+        <Description>Protocol inspection, log analysis and developer utilities.</Description>
+        <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+        <UpdatesEnabled Condition="'$(UpdatesEnabled)' == ''">false</UpdatesEnabled>
+        </PropertyGroup>
+        <ItemGroup>
+          <AssemblyMetadata Include="UpdatesEnabled" Value="$(UpdatesEnabled)" />
+          <AssemblyMetadata Include="UpdateManifestUrl" Value="$(UpdateManifestUrl)" />
+          <AssemblyMetadata Include="UpdateDownloadPageUrl" Value="$(UpdateDownloadPageUrl)" />
+          <AssemblyMetadata Include="UpdateFeedUrl" Value="$(UpdateFeedUrl)" />
+        </ItemGroup>
+        <Target Name="ValidateUpdateConfiguration" BeforeTargets="BeforeBuild" Condition="'$(UpdatesEnabled)' == 'true'">
+          <Error Condition="'$(UpdateManifestUrl)' == '' Or '$(UpdateDownloadPageUrl)' == '' Or '$(UpdateFeedUrl)' == ''" Text="Enabled updates require UpdateManifestUrl, UpdateDownloadPageUrl and UpdateFeedUrl." />
+        </Target>
+        <ItemGroup><ProjectReference Include="../NonStopToolkit.Core/NonStopToolkit.Core.csproj" /><ProjectReference Include="../NonStopToolkit.Application/NonStopToolkit.Application.csproj" /><ProjectReference Include="../NonStopToolkit.Utilities/NonStopToolkit.Utilities.csproj" /><ProjectReference Include="../NonStopToolkit.Parsing/NonStopToolkit.Parsing.csproj" /><ProjectReference Include="../NonStopToolkit.Generation/NonStopToolkit.Generation.csproj" /><ProjectReference Include="../NonStopToolkit.Infrastructure/NonStopToolkit.Infrastructure.csproj" /><PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.14" /><Content Include="../../definitions/**/*.json" Link="definitions/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" /></ItemGroup><ItemGroup><ProjectReference Include="../NonStopToolkit.PluginSdk.WinUI/NonStopToolkit.PluginSdk.WinUI.csproj" /></ItemGroup></Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+    <ItemGroup><ProjectReference Include="../../src/NonStopToolkit.Application/NonStopToolkit.Application.csproj" /><ProjectReference Include="../../src/NonStopToolkit.Infrastructure/NonStopToolkit.Infrastructure.csproj" />
+    <ProjectReference Include="../../samples/plugins/ExamplePlugin/ExamplePlugin.csproj" />
+    <ProjectReference Include="../../src/NonStopToolkit.Parsing/NonStopToolkit.Parsing.csproj" />
+    <Compile Include="../../src/NonStopToolkit.Desktop/Features/Parsers/ParserWorkspace.cs" Link="Desktop/ParserWorkspace.cs" />
+    <Compile Include="../../src/NonStopToolkit.Desktop/Features/Parsers/ParserResultPresentation.cs" Link="Desktop/ParserResultPresentation.cs" />
+    <Compile Include="../../src/NonStopToolkit.Desktop/Features/Parsers/ParserTablePan.cs" Link="Desktop/ParserTablePan.cs" />
+    <Compile Include="../../src/NonStopToolkit.Desktop/Features/Parsers/ParserOriginalText.cs" Link="Desktop/ParserOriginalText.cs" />
+    <Compile Include="../../src/NonStopToolkit.Desktop/Services/SessionSettings.cs" Link="Desktop/SessionSettings.cs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <Using Include="Xunit" />
+    <None Include="../../definitions/**/*.json" Link="definitions/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Fixtures/definitions/**/*.json" Link="definitions/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../samples/*" Link="samples/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup></Project>

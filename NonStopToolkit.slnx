@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NonStopToolkit.Application/NonStopToolkit.Application.csproj" />
+    <Project Path="src/NonStopToolkit.Core/NonStopToolkit.Core.csproj" />
+    <Project Path="src/NonStopToolkit.Desktop/NonStopToolkit.Desktop.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/NonStopToolkit.Generation/NonStopToolkit.Generation.csproj" />
+    <Project Path="src/NonStopToolkit.Infrastructure/NonStopToolkit.Infrastructure.csproj" />
+    <Project Path="src/NonStopToolkit.Parsing/NonStopToolkit.Parsing.csproj" />
+    <Project Path="src/NonStopToolkit.PluginSdk.WinUI/NonStopToolkit.PluginSdk.WinUI.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/NonStopToolkit.PluginSdk/NonStopToolkit.PluginSdk.csproj" />
+    <Project Path="src/NonStopToolkit.Utilities/NonStopToolkit.Utilities.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NonStopToolkit.Application.Tests/NonStopToolkit.Application.Tests.csproj" />
+    <Project Path="tests/NonStopToolkit.Generation.Tests/NonStopToolkit.Generation.Tests.csproj" />
+    <Project Path="tests/NonStopToolkit.Parsing.Tests/NonStopToolkit.Parsing.Tests.csproj" />
+    <Project Path="tests/NonStopToolkit.Utilities.Tests/NonStopToolkit.Utilities.Tests.csproj" />
+  </Folder>
+</Solution>

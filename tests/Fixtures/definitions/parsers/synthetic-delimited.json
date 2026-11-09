@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-delimited",
+  "name": "Synthetic pipe-delimited records",
+  "strategy": "delimited",
+  "encoding": "utf-8",
+  "detectionPrefix": "SYN|",
+  "detectionPriority": 100,
+  "delimiter": "|",
+  "fields": [
+    {
+      "name": "kind"
+    },
+    {
+      "name": "message",
+      "transform": "trim"
+    },
+    {
+      "name": "count"
+    }
+  ]
+}

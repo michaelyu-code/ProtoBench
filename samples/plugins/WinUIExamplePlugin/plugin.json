@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "example.winui",
+  "name": "Example custom WinUI tool",
+  "version": "1.0.0",
+  "entryAssembly": "ExampleWinUIPlugin.dll",
+  "entryType": "ExampleWinUIPlugin.Plugin",
+  "files": ["ExampleWinUIPlugin.dll", "ExampleWinUIPlugin.deps.json"]
+}

@@ -1,0 +1,152 @@
+{
+  "SchemaVersion": 1,
+  "Id": "synthetic-record-v1",
+  "Name": "Synthetic record tests",
+  "SpecVersion": "test-1",
+  "Fields": [
+    {
+      "Id": "mti",
+      "Name": "Message type",
+      "Labels": [
+        "Type"
+      ],
+      "Type": "digits",
+      "Length": 4
+    },
+    {
+      "Id": "3",
+      "Name": "Operation",
+      "Labels": [
+        "Operation"
+      ],
+      "Type": "digits",
+      "Length": 6
+    },
+    {
+      "Id": "4",
+      "Name": "Amount",
+      "Labels": [
+        "Amount"
+      ],
+      "Type": "digits",
+      "Length": 12
+    },
+    {
+      "Id": "11",
+      "Name": "Trace",
+      "Labels": [
+        "Trace"
+      ],
+      "Type": "digits",
+      "Length": 6
+    },
+    {
+      "Id": "39",
+      "Name": "Response",
+      "Labels": [
+        "Response"
+      ],
+      "Type": "text"
+    },
+    {
+      "Id": "41",
+      "Name": "Terminal",
+      "Labels": [
+        "Terminal"
+      ],
+      "Type": "text"
+    },
+    {
+      "Id": "42",
+      "Name": "Acceptor",
+      "Labels": [
+        "Acceptor"
+      ],
+      "Type": "text"
+    },
+    {
+      "Id": "47",
+      "Name": "Conditional value",
+      "Labels": [
+        "Conditional"
+      ],
+      "Type": "text"
+    },
+    {
+      "Id": "55",
+      "Name": "ICC entries",
+      "Labels": [
+        "ICC"
+      ],
+      "Type": "text",
+      "Decoder": "emvEntries"
+    },
+    {
+      "Id": "60",
+      "Name": "Padded value",
+      "Labels": [
+        "Padded"
+      ],
+      "Type": "text"
+    },
+    {
+      "Id": "61",
+      "Name": "Context value",
+      "Labels": [
+        "Context"
+      ],
+      "Type": "text"
+    }
+  ],
+  "Messages": {
+    "0200": {
+      "Name": "Synthetic request",
+      "Role": "request",
+      "Replies": [
+        "0210"
+      ],
+      "Fields": [
+        {
+          "Field": "11",
+          "Usage": "M"
+        },
+        {
+          "Field": "47",
+          "Usage": "F"
+        },
+        {
+          "Field": "55",
+          "Usage": "C",
+          "Comment": "Synthetic unresolved condition."
+        }
+      ]
+    },
+    "0210": {
+      "Name": "Synthetic reply",
+      "Role": "reply",
+      "Replies": [],
+      "Fields": []
+    },
+    "0810": {
+      "Name": "Synthetic optional reply",
+      "Role": "reply",
+      "Replies": [],
+      "Fields": [
+        {
+          "Field": "61",
+          "Usage": "C",
+          "WhenField": "3",
+          "WhenValues": [
+            "123456"
+          ],
+          "RequireWhenMatched": false,
+          "Comment": "Synthetic applicability-only condition."
+        }
+      ]
+    }
+  },
+  "TransactionTypes": {},
+  "Accounts": {},
+  "SourceAccountRequiredFor": [],
+  "DestinationAccountRequiredFor": []
+}

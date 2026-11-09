@@ -1,0 +1,8 @@
+* text=auto
+*.ps1 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+# Parser/generator fixtures include deliberate byte offsets and line endings.
+/samples/** -text
+/tests/Fixtures/** -text
+*.bin binary

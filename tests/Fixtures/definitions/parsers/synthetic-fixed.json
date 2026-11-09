@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-fixed",
+  "name": "Synthetic fixed-width records",
+  "strategy": "fixed-width",
+  "encoding": "ascii",
+  "detectionPrefix": "FX",
+  "detectionPriority": 90,
+  "fields": [
+    {
+      "name": "kind",
+      "start": 0,
+      "length": 2
+    },
+    {
+      "name": "name",
+      "start": 2,
+      "length": 8,
+      "transform": "trim"
+    },
+    {
+      "name": "count",
+      "start": 10,
+      "length": 4
+    }
+  ]
+}

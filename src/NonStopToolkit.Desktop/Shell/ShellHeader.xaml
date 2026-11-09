@@ -1,0 +1,5 @@
+<UserControl x:Class="NonStopToolkit.Desktop.Shell.ShellHeader"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <TitleBar x:Name="AppTitleBar" Title="ProtoBench" IsPaneToggleButtonVisible="True" />
+</UserControl>

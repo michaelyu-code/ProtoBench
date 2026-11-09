@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-fixed",
+  "name": "Synthetic fixed-width record",
+  "encoding": "ascii",
+  "lineEnding": "CRLF",
+  "fields": [
+    {
+      "name": "kind",
+      "length": 2
+    },
+    {
+      "name": "name",
+      "length": 8
+    },
+    {
+      "name": "count",
+      "length": 4,
+      "alignment": "right",
+      "padding": "0"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "example.toolkit",
+  "name": "Example Toolkit Extensions",
+  "version": "1.0.0",
+  "entryAssembly": "ExamplePlugin.dll",
+  "entryType": "ExamplePlugin.ExamplePlugin",
+  "files": [
+    "ExamplePlugin.dll",
+    "ExamplePlugin.deps.json",
+    "definitions/messages/example-response.json"
+  ]
+}
