@@ -155,15 +155,15 @@ The field detail panel keeps **Complete value**, Copy and View source above thre
 ```csharp
 return new FieldDecodeResult(children, findings)
 {
-    Specification = "C 4.19 Field 39 Response Code\n\n"
-        + "Field 39 value   Tag 8A value  Outcome\n"
-        + "───────────────  ────────────  ────────\n"
-        + "00 or 08         3030          Approved\n"
-        + "any other value  3035          Declined"
+    Specification = "Synthetic status example (demo data only)\n\n"
+        + "Code  Meaning\n"
+        + "────  ──────────────────\n"
+        + "A1    Demo accepted\n"
+        + "B2    Demo rejected"
 };
 ```
 
-The host transfers this text to `ParsedField.Specification` and displays it in a selectable, read-only monospaced block with horizontal and vertical scrolling and no wrapping. Spaces and line breaks are preserved; Markdown and HTML are not interpreted. Use spaces for column padding and insert paragraph line breaks yourself. The plugin owns the content, headings and table layout; do not include the surrounding panel or tab labels. Complete parsers can set `ParsedField.Specification` directly. Empty or omitted text shows “No specification supplied for this field.” Existing plugins can omit this additive property; the API version and existing constructors are unchanged. Rebuild plugins using it against the updated SDK and run them with the updated host.
+The host transfers this text to `ParsedField.Specification` and displays it in a selectable, read-only monospaced block with horizontal and vertical scrolling and no wrapping. Spaces and line breaks are preserved; Markdown and HTML are not interpreted. Use spaces for column padding and insert paragraph line breaks yourself. The example above is synthetic and does not reproduce any protocol specification. The plugin owns the content, headings and table layout; do not include the surrounding panel or tab labels. Complete parsers can set `ParsedField.Specification` directly. Empty or omitted text shows “No specification supplied for this field.” Existing plugins can omit this additive property; the API version and existing constructors are unchanged. Rebuild plugins using it against the updated SDK and run them with the updated host.
 
 The `spec-to-tool-config` skill can transcribe field descriptions and target known installed decoder IDs. New decoder algorithms and custom tools require developer code; the skill must not invent decoder IDs merely to make a spec appear covered.
 
