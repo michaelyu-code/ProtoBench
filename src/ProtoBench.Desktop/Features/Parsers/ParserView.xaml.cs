@@ -64,6 +64,8 @@ public sealed partial class ParserView : UserControl
         public string Number { get; init; } = "";
         public string Name { get; init; } = "";
         public string Preview { get; init; } = "";
+        public string DecodedSummary => Field?.Children is { Count: > 0 } children ? $"{children.Count} decoded items" : "";
+        public Visibility DecodedSummaryVisibility => DecodedSummary.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         public string Validation { get; init; } = "";
         public Visibility StatusVisibility => Validation == "Good · no findings" ? Visibility.Collapsed : Visibility.Visible;
         public Brush? StatusBrush { get; init; }
@@ -507,7 +509,7 @@ public sealed partial class ParserView : UserControl
             fields.Add(new FieldRow
             {
                 Field = field, Number = field.DataElement is "mti" or "bitmap" or null ? "—" : field.DataElement, Name = field.Name,
-                Preview = field.Children is { Count: > 0 } ? $"{field.Value[..Math.Min(64, field.Value.Length)]}  · {field.Children.Count} decoded items" : field.Value.ReplaceLineEndings(" "),
+                Preview = field.Value,
                 Validation = findings.FirstOrDefault(IsError)?.Status ?? (findings.Length > 0 ? "Warning" : "Good · no findings"),
                 StatusBrush = CheckBrush(findings.Any(IsError), findings.Length > 0),
                 Explanation = field.Description ?? "",
@@ -605,7 +607,8 @@ public sealed partial class ParserView : UserControl
         // not feed its height back into the inspector's viewport calculation.
         var inspectorHeaderHeight = Math.Max(0, InspectorTabs.TransformToVisual(InspectorPanel)
             .TransformPoint(new Windows.Foundation.Point()).Y);
-        InspectorTabs.Height = ParserResultPresentation.DetailHeight(availableHeight, inspectorHeaderHeight);
+        InspectorTabs.Height = ParserResultPresentation.DetailHeight(availableHeight, inspectorHeaderHeight,
+            showing, showing && !layout.DetailsBeside);
         var beside = layout.MessagesBeside;
         MessagesPanel.Height = ParserResultPresentation.MessagePaneHeight(availableHeight, beside,
             inspectorHeaderHeight + InspectorTabs.Height + InspectorPanel.Padding.Bottom + InspectorPanel.BorderThickness.Bottom);
@@ -638,8 +641,10 @@ public sealed partial class ParserView : UserControl
         FieldDetailScroll.VerticalScrollMode = stacked ? ScrollMode.Auto : ScrollMode.Disabled;
         FieldDetailScroll.VerticalScrollBarVisibility = stacked ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
         FieldDetailTabs.Height = stacked ? 320 : double.NaN;
-        var listHeight = new GridLength(stacked ? 0.3 : 1, GridUnitType.Star);
-        var detailHeight = stacked ? new GridLength(0.7, GridUnitType.Star) : new GridLength(0);
+        // A proportional split wastes the detail budget on the list as the inspector grows.
+        // Keep several field rows available and give the remaining height to details.
+        var listHeight = stacked ? new GridLength(128) : new GridLength(1, GridUnitType.Star);
+        var detailHeight = stacked ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         if (FieldLayout.RowDefinitions[0].Height != listHeight) FieldLayout.RowDefinitions[0].Height = listHeight;
         if (FieldLayout.RowDefinitions[1].Height != detailHeight) FieldLayout.RowDefinitions[1].Height = detailHeight;
         FieldLayout.RowSpacing = stacked ? 8 : 0;

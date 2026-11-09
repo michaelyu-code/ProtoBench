@@ -28,6 +28,24 @@ public sealed class ParserResultPresentationTests
         Assert.Equal(expected, ParserResultPresentation.DetailHeight(height, header));
     }
 
+    [Theory]
+    [InlineData(360, 180, false, 560)]
+    [InlineData(560, 180, false, 560)]
+    [InlineData(560, 180, true, 720)]
+    [InlineData(1100, 180, false, 896)]
+    [InlineData(1100, 180, true, 896)]
+    [InlineData(double.PositiveInfinity, 180, true, 720)]
+    public void OpenDetailsReserveContentSpaceEvenOnScaledLaptopScreens(double height, double header,
+        bool stacked, double expected)
+    {
+        var tabHeight = ParserResultPresentation.DetailHeight(height, header, true, stacked);
+        Assert.Equal(expected, tabHeight);
+        // Outer tab strip/margin, stacked field list/gap, detail border, title,
+        // complete value (up to 120), actions and inner tab strip.
+        var contentHeight = tabHeight - 56 - (stacked ? 136 : 0) - 22 - 48 - 120 - 40 - 48;
+        Assert.True(contentHeight >= 200, $"Only {contentHeight} DIPs left for detail content");
+    }
+
     [Fact]
     public void NarrowWindowsStackDetailsAndKeepEveryTextRoleReadable()
     {

@@ -150,12 +150,15 @@
           <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="6,0" /><Setter Property="MinHeight" Value="0" /></Style></ListView.ItemContainerStyle>
           <ListView.ItemTemplate>
            <DataTemplate>
-            <Grid ColumnSpacing="6" Padding="{Binding FieldPadding, Source={StaticResource ResultPresentation}, Converter={StaticResource VerticalInset}}" ToolTipService.ToolTip="{Binding Validation}">
+            <Grid ColumnSpacing="6" Padding="0,6" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" ToolTipService.ToolTip="{Binding Validation}">
              <Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /></Grid.ColumnDefinitions>
              <TextBlock Text="{Binding Number}" Opacity="0.65" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" />
-             <StackPanel Grid.Column="1" Spacing="{Binding FieldGap, Source={StaticResource ResultPresentation}}">
+             <StackPanel Grid.Column="1" Spacing="6">
               <TextBlock FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" Text="{Binding Name}" TextWrapping="Wrap" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding Preview}" FontFamily="Cascadia Mono" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" TextTrimming="CharacterEllipsis" Opacity="0.85" />
+              <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="8,5">
+               <TextBlock Text="{Binding Preview}" FontFamily="Cascadia Mono" FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" FontWeight="Normal" TextWrapping="Wrap" />
+              </Border>
+              <TextBlock Text="{Binding DecodedSummary}" Visibility="{Binding DecodedSummaryVisibility}" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
              </StackPanel>
              <Border Grid.Column="2" Width="8" Height="8" CornerRadius="4" Background="{Binding StatusBrush}" Visibility="{Binding StatusVisibility}" VerticalAlignment="Top" Margin="0,5,0,0" />
             </Grid>
@@ -202,7 +205,7 @@
             <StackPanel x:Name="DecodedPanel" Spacing="4" Visibility="Collapsed">
              <TextBlock FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" Text="Decoded fields" FontWeight="SemiBold" />
              <Grid Padding="8,6" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="3*" /></Grid.ColumnDefinitions>
               <TextBlock Text="Field" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" FontWeight="SemiBold" />
               <TextBlock Grid.Column="1" Text="Value" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" FontWeight="SemiBold" />
              </Grid>
@@ -211,7 +214,7 @@
               <ListView.ItemTemplate>
               <DataTemplate>
                <Grid Padding="{Binding FieldPadding, Source={StaticResource ResultPresentation}, Converter={StaticResource VerticalInset}, ConverterParameter=8}" ColumnSpacing="12" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" ToolTipService.ToolTip="{Binding SourceSummary}" Background="Transparent">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="3*" /></Grid.ColumnDefinitions>
                 <StackPanel Margin="{Binding Indent}" Spacing="3">
                  <TextBlock FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" Text="{Binding Name}" TextWrapping="Wrap" FontWeight="SemiBold" />
                  <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" Opacity="0.75" Visibility="{Binding ShowDecodedDescriptions, Source={StaticResource ResultPresentation}, Converter={StaticResource CompactVisibility}}" />

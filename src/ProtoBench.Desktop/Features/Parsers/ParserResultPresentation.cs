@@ -7,10 +7,17 @@ public sealed record ParserPaneLayout(bool MessagesBeside, double MessageWidth, 
 /// <summary>Responsive layout and shared typography for all result templates; never scales text below 12 DIPs.</summary>
 public sealed class ParserResultPresentation : ObservableObject
 {
-    public static double DetailHeight(double availableHeight, double headerHeight) =>
-        double.IsFinite(availableHeight) && double.IsFinite(headerHeight)
-            ? Math.Clamp(availableHeight - Math.Max(0, headerHeight) - 24, 320, 1000)
-            : 600;
+    // These are logical pixels, so Windows display scaling is already accounted for.
+    // Keep room for both tab strips, the value/actions and a readable detail viewport.
+    // On short screens the page scrolls instead of compressing the nested content.
+    public static double DetailHeight(double availableHeight, double headerHeight,
+        bool showingDetails = false, bool stackedDetails = false)
+    {
+        var minimum = showingDetails ? stackedDetails ? 720 : 560 : 320;
+        return double.IsFinite(availableHeight) && double.IsFinite(headerHeight)
+            ? Math.Clamp(availableHeight - Math.Max(0, headerHeight) - 24, minimum, 1000)
+            : Math.Max(minimum, 600);
+    }
 
     // List length never participates in the shared result row's height.
     public static double MessagePaneHeight(double availableHeight, bool beside, double inspectorHeight) =>
