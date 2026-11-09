@@ -35,9 +35,9 @@ Environment: Windows x64, .NET SDK 10.0.302, Windows SDK 10.0.26100. Validation 
 ## Automated checks
 
 ```powershell
-dotnet restore NonStopToolkit.slnx
-dotnet build NonStopToolkit.slnx --no-restore
-dotnet test NonStopToolkit.slnx --no-build --no-restore
+dotnet restore ProtoBench.slnx
+dotnet build ProtoBench.slnx --no-restore
+dotnet test ProtoBench.slnx --no-build --no-restore
 ```
 
 The full Debug solution build passes with zero warnings and zero errors. Following the ASCII/hex and CP500 additions on 8 November 2026, all 95 xUnit tests pass across four projects:

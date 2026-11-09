@@ -1,6 +1,6 @@
 # ProtoBench developer kit
 
-ProtoBench retains the `NonStopToolkit.*` SDK assembly names, namespaces and props imports so existing extensions stay compatible. The desktop executable is `app/ProtoBench.exe`.
+Use the `ProtoBench.*` SDK assemblies, namespaces and props imports. The desktop executable is `app/ProtoBench.exe`. SDK API 2 requires rebuilding extensions against these assemblies and setting `apiVersion` to 2 in their manifests.
 
 This kit builds independently of the original application repository. Extract the entire ZIP before building; keep `sdk`, `samples` and `tools` in their relative locations. Exact SDK/runtime versions are recorded in `versions.json`.
 
@@ -28,9 +28,9 @@ It produces `packages/example.winui-1.0.0.nstplugin`. Custom compiled XAML/PRI r
 
 ## Compile against the SDK
 
-Standard tools, parsers, generators and field decoders import `sdk/NonStopToolkit.PluginSdk.props` in their project. It references all portable contract DLLs under `sdk/net10.0` with `Private=false`, so the host's SDK copies are not bundled into your plugin. Keep `<EnableDynamicLoading>true</EnableDynamicLoading>` in plugin projects.
+Standard tools, parsers, generators and field decoders import `sdk/ProtoBench.PluginSdk.props` in their project. It references all portable contract DLLs under `sdk/net10.0` with `Private=false`, so the host's SDK copies are not bundled into your plugin. Keep `<EnableDynamicLoading>true</EnableDynamicLoading>` in plugin projects.
 
-Custom WinUI tools import `sdk/NonStopToolkit.PluginSdk.WinUI.props` instead and use the framework/WindowsAppSDK settings shown in the custom-UI starter. Do not include toolkit SDK or WinUI runtime DLLs in your plugin manifest. Declare any additional private dependencies and resources explicitly in `plugin.json`.
+Custom WinUI tools import `sdk/ProtoBench.PluginSdk.WinUI.props` instead and use the framework/WindowsAppSDK settings shown in the custom-UI starter. Do not include toolkit SDK or WinUI runtime DLLs in your plugin manifest. Declare any additional private dependencies and resources explicitly in `plugin.json`.
 
 Browse `contracts/` for interface/result-model source and [the full plugin guide](docs/PLUGINS.md) for lifecycle, field descriptions, decoder behavior, source offsets and package limits. Paths beginning with `src/` in that guide refer to the original repository; the standalone starters in this kit use binary references instead.
 
@@ -40,7 +40,7 @@ For large log files and clipboard content, implement `IStreamingLogParser.ParseT
 
 ## Test in the app
 
-If `app/` is included, launch `app/ProtoBench.exe`. Otherwise use a matching app distribution supplied by the maintainer. The test app uses the normal `%LOCALAPPDATA%/NonStopToolkit` settings, definitions and plugins; it does not create an isolated profile.
+If `app/` is included, launch `app/ProtoBench.exe`. Otherwise use a matching app distribution supplied by the maintainer. The test app uses the normal `%LOCALAPPDATA%/ProtoBench` settings, definitions and plugins; it does not create an isolated profile.
 
 Open **Settings → Plugins & custom tools → Import plugin…**, choose your `.nstplugin` package, and restart. Tools appear under **Custom Tools**; parsers and generators appear in their existing selectors. Open two tabs to check session independence. The custom UI counter starts at zero in each tab.
 

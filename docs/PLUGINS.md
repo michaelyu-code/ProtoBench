@@ -6,7 +6,7 @@ ProtoBench loads trusted .NET plugins for custom tools, complete log parsers, fi
 
 Open **Settings → Plugins & custom tools → Import plugin…**. Select a `.nstplugin` (ZIP) package, `.zip`, `plugin.json`, or an entry DLL beside `plugin.json`. Review the package name/version, then import and restart. Import copies the declared files; it does not execute code. The entry type executes when the app next starts.
 
-Plugins live in `%LOCALAPPDATA%/NonStopToolkit/plugins/<id>/`. The Settings checkbox enables/disables the next startup; currently loaded tools remain available until restart. Settings shows whether a package is loaded this session. Startup notifications identify rejected manifests and load/registration failures. To replace or remove a plugin, close the app, remove its specific folder using **Open plugins folder**, then import the replacement after reopening. Existing IDs cannot be overwritten during import. There is no hot reload.
+Plugins live in `%LOCALAPPDATA%/ProtoBench/plugins/<id>/`. The Settings checkbox enables/disables the next startup; currently loaded tools remain available until restart. Settings shows whether a package is loaded this session. Startup notifications identify rejected manifests and load/registration failures. To replace or remove a plugin, close the app, remove its specific folder using **Open plugins folder**, then import the replacement after reopening. Existing IDs cannot be overwritten during import. There is no hot reload.
 
 Plugins run with the host process's permissions. Assembly loading contexts separate dependencies; they are not a security sandbox or a crash/timeout boundary. Install developer code you trust. Ordinary managed detection/decoding errors are contained, but native crashes, process termination and non-cooperative infinite loops can still affect the application. A plugin that requires isolation must run its own constrained worker process; that is outside this API.
 
@@ -36,7 +36,7 @@ The response field displays its spec description and a decoded “Approved (synt
 
 To create a complete kit for another developer, run `./scripts/Build-DeveloperKit.ps1`. It builds the SDKs and matching test app, includes their dependencies and contract source, generates standalone standard/WinUI starter projects, verifies both starters, and creates `artifacts/developer-kit/` plus `artifacts/developer-kit.zip`. The kit's README explains binary references and packaging without the app repository. Use `-SkipApp` for an SDK-only handoff, `-NoZip` for folder output only, or `-OutputDirectory <new-folder>` to choose another destination. Existing output is preserved; use a new destination for a later build. The default test app is framework-dependent and runs with the .NET 10 runtime included in the developer SDK.
 
-Use the .NET 10 SDK. Reference `src/NonStopToolkit.PluginSdk/NonStopToolkit.PluginSdk.csproj`, or distribute the SDK and its contract assemblies to developers. Keep contracts at the app's supported API/assembly versions. A plugin project should set `<EnableDynamicLoading>true</EnableDynamicLoading>` so dependency metadata and private runtime dependencies are available in build output.
+Use the .NET 10 SDK. Reference `src/ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj`, or distribute the SDK and its contract assemblies to developers. Keep contracts at the app's supported API/assembly versions. A plugin project should set `<EnableDynamicLoading>true</EnableDynamicLoading>` so dependency metadata and private runtime dependencies are available in build output.
 
 Implement one public, concrete, parameterless `IToolkitPlugin` entry type. Its optional `Tools`, `Parsers`, `Generators`, and `FieldDecoders` properties export capabilities; omitted properties export nothing. Use package-qualified IDs such as `acme.response-code`. Tool/parser/generator IDs are case-insensitively unique within their respective registries. Decoder IDs are case-sensitive, and `emvEntries` is reserved. Processing-code decoding is provided by extensions. The whole package is rejected if any export conflicts. `Dispose` releases package-wide resources.
 
@@ -45,7 +45,7 @@ A manifest at the package root declares exactly the files to import:
 ```json
 {
   "schemaVersion": 1,
-  "apiVersion": 1,
+  "apiVersion": 2,
   "id": "example.toolkit",
   "name": "Example Toolkit Extensions",
   "version": "1.0.0",
@@ -55,7 +55,7 @@ A manifest at the package root declares exactly the files to import:
 }
 ```
 
-`schemaVersion` and `apiVersion` must currently be 1. `version` is a numeric .NET version (for example `1.2.0`). IDs use lowercase ASCII letters, digits, periods or hyphens, start with a letter/digit, and have at most 80 characters. File paths are relative, case-sensitive portable names using `/`; no rooted paths, traversal, Windows device names, hidden/reserved files or symbolic links/junctions. Maximum manifest size is 64 KiB, at most 512 declared files, and compressed/expanded packages are limited to 128 MiB. ZIPs must contain only the manifest and declared files (directory entries are allowed). Missing, duplicate or undeclared entries reject the import and remove its staging folder.
+`schemaVersion` must be 1 and `apiVersion` must be 2. `version` is a numeric .NET version (for example `1.2.0`). IDs use lowercase ASCII letters, digits, periods or hyphens, start with a letter/digit, and have at most 80 characters. File paths are relative, case-sensitive portable names using `/`; no rooted paths, traversal, Windows device names, hidden/reserved files or symbolic links/junctions. Maximum manifest size is 64 KiB, at most 512 declared files, and compressed/expanded packages are limited to 128 MiB. ZIPs must contain only the manifest and declared files (directory entries are allowed). Missing, duplicate or undeclared entries reject the import and remove its staging folder.
 
 Include private dependency DLLs, `.deps.json` and resources in `files`. Each package uses its own `AssemblyLoadContext` with `AssemblyDependencyResolver`. The SDK, Core, Parsing, Generation and WinUI contract assemblies use the host's instances to preserve type identity; do not ship replacements for them. Target the host framework, Windows/x64 runtime for native dependencies, and API version. The manifest is a compatibility declaration, not a digital signature or verification of a developer's identity.
 
@@ -69,7 +69,7 @@ Each factory call must return a **new** `IPluginToolSession`. Its `ExecuteAsync`
 
 ## Custom WinUI views
 
-For specialized interfaces, additionally reference `src/NonStopToolkit.PluginSdk.WinUI/NonStopToolkit.PluginSdk.WinUI.csproj`. Target `net10.0-windows10.0.26100.0`, x64 and the host's Microsoft.WindowsAppSDK version (currently 2.6.5). Implement `ICustomToolViewProvider` on the package entry type:
+For specialized interfaces, additionally reference `src/ProtoBench.PluginSdk.WinUI/ProtoBench.PluginSdk.WinUI.csproj`. Target `net10.0-windows10.0.26100.0`, x64 and the host's Microsoft.WindowsAppSDK version (currently 2.6.5). Implement `ICustomToolViewProvider` on the package entry type:
 
 ```csharp
 public FrameworkElement? CreateView(string toolId, IPluginToolSession session)
@@ -96,7 +96,7 @@ public Task ParseToAsync(Stream input, ILogParseSink sink, CancellationToken tok
     => engine.ParseToAsync(input, sink, token); // JsonDefinedParser or RecordMessageParser
 ```
 
-Custom streaming implementations must read in chunks, keep only the current record in memory, and call `sink.AddRecord(record)` sequentially. The host persists each record synchronously, then releases it. Call `sink.AddDiagnostic(...)` for rejected records and `sink.ReportProgress(bytesRead)` periodically. Use `long` for absolute offsets and counts, honor cancellation between records/reads, and retain a finite per-record bound so a malformed record cannot consume the entire file. Do not build a whole-file string/list before calling the sink. See the example plugin for a forwarding implementation. The interface is additive and keeps SDK API version 1; plugins using it need the matching updated host/contracts.
+Custom streaming implementations must read in chunks, keep only the current record in memory, and call `sink.AddRecord(record)` sequentially. The host persists each record synchronously, then releases it. Call `sink.AddDiagnostic(...)` for rejected records and `sink.ReportProgress(bytesRead)` periodically. Use `long` for absolute offsets and counts, honor cancellation between records/reads, and retain a finite per-record bound so a malformed record cannot consume the entire file. Do not build a whole-file string/list before calling the sink. See the example plugin for a forwarding implementation. The interface is additive and uses SDK API version 2; plugins using it need the matching updated host/contracts.
 
 The host indexes all streaming records on disk, pages summaries (2,000 by default), and reads full decoded payloads only for selection. Search, filtering, sorting and related-message candidate lookup use the full index. The UI displays at most 250 related candidates and explicitly reports when more exist. Oversized/malformed input can be skipped with diagnostics; only the first 1,000 diagnostics are displayed. Legacy plugins that only implement `ILogParser` are restricted to 16 MiB input; their own `IsTruncated` previews remain explicitly labelled. Built-in `ParseAsync` retains its original preview limits for callers, while `ParseToAsync` removes total byte/record preview caps. File and clipboard import support multi-gigabyte input subject to available disk space and the source application's clipboard capability.
 
@@ -169,6 +169,6 @@ The `spec-to-tool-config` skill can transcribe field descriptions and target kno
 
 ## Verification
 
-`dotnet build NonStopToolkit.slnx` checks both portable and WinUI SDKs. `dotnet test NonStopToolkit.slnx` covers import rollback/path validation, incompatible API versions, disabled plugins, duplicate IDs, isolated DLL loading with shared contracts, tool execution, CRLF parser offsets, decoder/description flow, unavailable decoders, and independent session cancellation/disposal. For UI verification, import a sample, restart, open its tool through sidebar/dashboard/new-tab, run it in two tabs, and check its parser/description/decoder in Log Parser.
+`dotnet build ProtoBench.slnx` checks both portable and WinUI SDKs. `dotnet test ProtoBench.slnx` covers import rollback/path validation, incompatible API versions, disabled plugins, duplicate IDs, isolated DLL loading with shared contracts, tool execution, CRLF parser offsets, decoder/description flow, unavailable decoders, and independent session cancellation/disposal. For UI verification, import a sample, restart, open its tool through sidebar/dashboard/new-tab, run it in two tabs, and check its parser/description/decoder in Log Parser.
 
 

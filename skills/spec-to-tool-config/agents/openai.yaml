@@ -1,4 +1,4 @@
 interface:
   display_name: "Spec to Tool Config"
-  short_description: "Turn Markdown specs into NonStop Toolkit configs"
-  default_prompt: "Use $spec-to-tool-config to read my Markdown spec and generate validated NonStop Toolkit JSON configuration."
+  short_description: "Turn Markdown specs into ProtoBench configs"
+  default_prompt: "Use $spec-to-tool-config to read my Markdown spec and generate validated ProtoBench JSON configuration."

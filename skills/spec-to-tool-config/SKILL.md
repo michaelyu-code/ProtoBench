@@ -1,17 +1,17 @@
 ---
 name: spec-to-tool-config
-description: Convert Markdown protocol or record-format specifications into NonStop Toolkit JSON message profiles, log parser definitions, or fixed-width generator definitions. Use when adding or updating a Term specification or another supported format from a spec file; identify requirements that need app code instead of inventing config keys.
+description: Convert Markdown protocol or record-format specifications into ProtoBench JSON message profiles, log parser definitions, or fixed-width generator definitions. Use when adding or updating a Term specification or another supported format from a spec file; identify requirements that need app code instead of inventing config keys.
 ---
 
 # Spec to tool config
 
-Read the supplied spec Markdown and produce JSON the existing NonStop Toolkit can load, with a short source-mapping and validation report. Support Term message profiles and other formats that fit the app's parser or generator schemas.
+Read the supplied spec Markdown and produce JSON the existing ProtoBench can load, with a short source-mapping and validation report. Support Term message profiles and other formats that fit the app's parser or generator schemas.
 
 ## Discover the contract
 
-Locate the repository from the working directory or the user's path. Its root contains `NonStopToolkit.slnx`, `src/`, and `definitions/`; it may be nested under `NonStopToolkit/`. If unavailable, ask for its location while extracting the supplied spec. Do not assume a Markdown spec has a rigid heading or table format.
+Locate the repository from the working directory or the user's path. Its root contains `ProtoBench.slnx`, `src/`, and `definitions/`; it may be nested under `ProtoBench/`. If unavailable, ask for its location while extracting the supplied spec. Do not assume a Markdown spec has a rigid heading or table format.
 
-Read the current `src/NonStopToolkit.Desktop/App.xaml.cs` definition loading/registration and the relevant schema's `FromJson` and `Validate` methods. These are authoritative if the reference below has drifted. Inspect the corresponding engine and bundled example before choosing a schema:
+Read the current `src/ProtoBench.Desktop/App.xaml.cs` definition loading/registration and the relevant schema's `FromJson` and `Validate` methods. These are authoritative if the reference below has drifted. Inspect the corresponding engine and bundled example before choosing a schema:
 
 | Spec describes | Output | Source contract |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Read the current `src/NonStopToolkit.Desktop/App.xaml.cs` definition loading/reg
 | One-record-per-line delimited, fixed-width, or named-group regex text | `definitions/parsers/<id>.json` | `Parsing/Definitions/ParserDefinition.cs`, `Parsing/Engines/JsonDefinedParser.cs` |
 | Fixed-width output records | `definitions/generators/<id>.json` | `Generation/Definitions/GeneratorDefinition.cs`, `Generation/Engines/FixedWidthGenerator.cs` |
 
-Source paths in this table are relative to `src/NonStopToolkit.<area>/`. Read [references/config-contracts.md](references/config-contracts.md) for exact properties, units, examples and Term-specific traps.
+Source paths in this table are relative to `src/ProtoBench.<area>/`. Read [references/config-contracts.md](references/config-contracts.md) for exact properties, units, examples and Term-specific traps.
 
 A message profile configures the existing labelled-log engine; it is not an arbitrary ISO 8583 wire parser. EMV decoder tables, calculators, new log layouts and other tools may require C# changes. For those, extract requirements and explain the exact unsupported capability. Do not manufacture a JSON schema or implement a new tool unless requested. Produce any independently useful supported config and clearly mark its coverage.
 
@@ -51,4 +51,4 @@ Run the supplied validator against each generated file using the current app's s
 
 When a supplied sample or a generated fixture is available, exercise the actual engine in an isolated temporary harness or a focused existing test. Check expected values and relevant missing/forbidden/unresolved findings, and exact bytes for generators. Avoid saving private samples in the repository. Explain when runtime behavior remains unverified.
 
-Tell the user which files were created, coverage gaps, and checks performed. For repository definitions, the desktop build copies JSON to its output. For an existing installed app, the custom destination is `%LOCALAPPDATA%/NonStopToolkit/definitions/<kind>/`; install there when requested, otherwise give that destination. Restart the app after installing custom definitions. Bundled definitions load first; duplicate IDs are skipped rather than overridden. Multiple Term profiles can require manual selection because detection recognizes the shared log header. Adding a format uses an existing workspace and does not add a sidebar tool.
+Tell the user which files were created, coverage gaps, and checks performed. For repository definitions, the desktop build copies JSON to its output. For an existing installed app, the custom destination is `%LOCALAPPDATA%/ProtoBench/definitions/<kind>/`; install there when requested, otherwise give that destination. Restart the app after installing custom definitions. Bundled definitions load first; duplicate IDs are skipped rather than overridden. Multiple Term profiles can require manual selection because detection recognizes the shared log header. Adding a format uses an existing workspace and does not add a sidebar tool.

@@ -4,7 +4,7 @@
 
 A local Windows engineering toolkit built with WinUI 3, C# and .NET 10. This foundation includes working Base Converter, Log Parser and File Generator workspaces. Parser specs are supplied by extensions or custom user definitions; none are bundled. The shipped generator is a **synthetic framework example**.
 
-The app launches as `ProtoBench.exe`. The existing `NonStopToolkit.*` project/SDK names and `%LOCALAPPDATA%/NonStopToolkit` data directory are retained for compatibility with installed extensions, settings and update identities.
+The app launches as `ProtoBench.exe`. Projects, namespaces, SDK assemblies and imports use `ProtoBench.*`; user data lives under `%LOCALAPPDATA%/ProtoBench`. SDK API 2 requires extensions to be rebuilt against the new assemblies and their manifests to declare `apiVersion: 2`.
 
 ## Build and run
 
@@ -13,10 +13,10 @@ Requirements: Windows 10 1809 or newer (Windows 11 recommended), x64, .NET SDK 1
 From this directory:
 
 ```powershell
-dotnet restore NonStopToolkit.slnx
-dotnet build NonStopToolkit.slnx --no-restore
-dotnet test NonStopToolkit.slnx --no-build --no-restore
-dotnet run --project src/NonStopToolkit.Desktop
+dotnet restore ProtoBench.slnx
+dotnet build ProtoBench.slnx --no-restore
+dotnet test ProtoBench.slnx --no-build --no-restore
+dotnet run --project src/ProtoBench.Desktop
 ```
 
 Close running toolkit instances before rebuilding. The solution maps Desktop to x64; the libraries and tests use Any CPU. Direct project builds may use `bin/Debug`, while solution builds use `bin/x64/Debug` for Desktop. Use `dotnet run` to select the appropriate output automatically, or run `run.ps1` for a consistent x64 build and launch.
@@ -24,7 +24,7 @@ Close running toolkit instances before rebuilding. The solution maps Desktop to 
 The app is unpackaged and includes its Windows App SDK runtime; no MSIX deployment or backend is needed. The .NET 10 desktop runtime is required when running an ordinary build on a different computer. For a self-contained deployment:
 
 ```powershell
-dotnet publish src/NonStopToolkit.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -o artifacts/publish
+dotnet publish src/ProtoBench.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -o artifacts/publish
 ```
 
 Distribute the complete publish directory, not just the executable. Default builds make no network requests and need no accounts or server dependencies. NuGet restore is a development-time operation.
@@ -153,7 +153,7 @@ For a C# implementation, implement `IFileGenerator` (`InputNames` advertises its
 
 ## Local data and privacy
 
-`%LOCALAPPDATA%/NonStopToolkit/` contains:
+`%LOCALAPPDATA%/ProtoBench/` contains:
 
 ```text
 settings.json

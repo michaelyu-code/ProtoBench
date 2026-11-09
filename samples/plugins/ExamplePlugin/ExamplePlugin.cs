@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using NonStopToolkit.Core.Documents;
-using NonStopToolkit.Core.Fields;
-using NonStopToolkit.Parsing.Abstractions;
-using NonStopToolkit.PluginSdk;
+using ProtoBench.Core.Documents;
+using ProtoBench.Core.Fields;
+using ProtoBench.Parsing.Abstractions;
+using ProtoBench.PluginSdk;
 
 namespace ExamplePlugin;
 
@@ -16,9 +16,9 @@ public sealed class ExamplePlugin : IToolkitPlugin
             () => new HashSession(), ActionLabel: "Calculate", Help: "Sample developer plugin. Input is processed locally and is not saved.")
     ];
     public IEnumerable<ILogParser> Parsers => [new ExampleLogParser()];
-    public IEnumerable<NonStopToolkit.Generation.Abstractions.IFileGenerator> Generators =>
+    public IEnumerable<ProtoBench.Generation.Abstractions.IFileGenerator> Generators =>
     [
-        new NonStopToolkit.Generation.Engines.FixedWidthGenerator(new()
+        new ProtoBench.Generation.Engines.FixedWidthGenerator(new()
         {
             Id = "example.fixed", Name = "Example eight-byte record", Encoding = "ascii", LineEnding = "CRLF",
             Fields = [new() { Name = "value", Length = 8 }]
@@ -53,7 +53,7 @@ public sealed class ResponseDecoder : IFieldDecoder
 
 public sealed class ExampleLogParser : IStreamingLogParser
 {
-    private readonly NonStopToolkit.Parsing.Engines.JsonDefinedParser engine = new(new()
+    private readonly ProtoBench.Parsing.Engines.JsonDefinedParser engine = new(new()
     {
         Id = "example.lines", Name = "Example EX: log", Strategy = "regex", Encoding = "ascii",
         DetectionPrefix = "EX:", DetectionPriority = 25, Pattern = "^EX:(?<message>.*)$",

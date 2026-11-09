@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup></PropertyGroup><ItemGroup><ProjectReference Include="../ProtoBench.Core/ProtoBench.Core.csproj" /><ProjectReference Include="../ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj" /><PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" /></ItemGroup></Project>

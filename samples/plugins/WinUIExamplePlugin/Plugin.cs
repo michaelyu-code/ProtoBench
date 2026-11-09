@@ -1,7 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using NonStopToolkit.PluginSdk;
-using NonStopToolkit.PluginSdk.WinUI;
+using ProtoBench.PluginSdk;
+using ProtoBench.PluginSdk.WinUI;
 
 namespace ExampleWinUIPlugin;
 

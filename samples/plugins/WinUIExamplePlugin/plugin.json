@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "apiVersion": 1,
+  "apiVersion": 2,
   "id": "example.winui",
   "name": "Example custom WinUI tool",
   "version": "1.0.0",

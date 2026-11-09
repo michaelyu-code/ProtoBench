@@ -26,7 +26,7 @@ try {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Build output needs plugin.json.' }
     if ((Get-Item -LiteralPath $manifestPath).Length -gt 65536) { throw 'Manifest exceeds 64 KiB.' }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.schemaVersion -ne 1 -or $manifest.apiVersion -ne 1) { throw 'Unsupported manifest/API version.' }
+    if ($manifest.schemaVersion -ne 1 -or $manifest.apiVersion -ne 2) { throw 'Unsupported manifest/API version.' }
     if ($manifest.id -cnotmatch '^[a-z0-9][a-z0-9.-]{0,79}$' -or $manifest.id.EndsWith('.') -or
         $manifest.version -notmatch '^\d+\.\d+(?:\.\d+){0,2}$') { throw 'Invalid plugin ID or numeric version.' }
     $files = @($manifest.files)

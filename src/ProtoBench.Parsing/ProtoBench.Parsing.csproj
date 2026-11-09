@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup></PropertyGroup><ItemGroup><ProjectReference Include="../ProtoBench.Core/ProtoBench.Core.csproj" /><ProjectReference Include="../ProtoBench.Utilities/ProtoBench.Utilities.csproj" /></ItemGroup></Project>

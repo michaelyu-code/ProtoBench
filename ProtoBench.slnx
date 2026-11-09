@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ProtoBench.Application/ProtoBench.Application.csproj" />
+    <Project Path="src/ProtoBench.Core/ProtoBench.Core.csproj" />
+    <Project Path="src/ProtoBench.Desktop/ProtoBench.Desktop.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/ProtoBench.Generation/ProtoBench.Generation.csproj" />
+    <Project Path="src/ProtoBench.Infrastructure/ProtoBench.Infrastructure.csproj" />
+    <Project Path="src/ProtoBench.Parsing/ProtoBench.Parsing.csproj" />
+    <Project Path="src/ProtoBench.PluginSdk.WinUI/ProtoBench.PluginSdk.WinUI.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj" />
+    <Project Path="src/ProtoBench.Utilities/ProtoBench.Utilities.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ProtoBench.Application.Tests/ProtoBench.Application.Tests.csproj" />
+    <Project Path="tests/ProtoBench.Generation.Tests/ProtoBench.Generation.Tests.csproj" />
+    <Project Path="tests/ProtoBench.Parsing.Tests/ProtoBench.Parsing.Tests.csproj" />
+    <Project Path="tests/ProtoBench.Utilities.Tests/ProtoBench.Utilities.Tests.csproj" />
+  </Folder>
+</Solution>

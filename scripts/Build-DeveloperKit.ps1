@@ -45,7 +45,7 @@ function Write-Utf8([string]$RelativePath, [string]$Content) {
 Push-Location -LiteralPath $repository
 try {
     [xml]$properties = Get-Content -LiteralPath (Join-Path $repository 'Directory.Build.props') -Raw
-    [xml]$winuiProject = Get-Content -LiteralPath (Join-Path $repository 'src/NonStopToolkit.PluginSdk.WinUI/NonStopToolkit.PluginSdk.WinUI.csproj') -Raw
+    [xml]$winuiProject = Get-Content -LiteralPath (Join-Path $repository 'src/ProtoBench.PluginSdk.WinUI/ProtoBench.PluginSdk.WinUI.csproj') -Raw
     $framework = [string]$properties.Project.PropertyGroup.TargetFramework
     if ($framework -notmatch '^net(\d+)\.(\d+)$') { throw 'Unsupported portable target framework.' }
     $minimumSdk = $Matches[1] + '.' + $Matches[2] + '.100'
@@ -55,17 +55,17 @@ try {
     $sdkUsed = (& dotnet --version)
     if ($LASTEXITCODE -ne 0) { throw 'Could not read .NET SDK version.' }
 
-    $contractNames = @('NonStopToolkit.Core', 'NonStopToolkit.Parsing', 'NonStopToolkit.Generation', 'NonStopToolkit.Utilities', 'NonStopToolkit.PluginSdk')
+    $contractNames = @('ProtoBench.Core', 'ProtoBench.Parsing', 'ProtoBench.Generation', 'ProtoBench.Utilities', 'ProtoBench.PluginSdk')
     if (-not $SkipApp) {
         Write-Host 'Building SDKs and publishing the Windows x64 test app…'
-        $publishArguments = @('publish', 'src/NonStopToolkit.Desktop/NonStopToolkit.Desktop.csproj', '-c', $Configuration,
+        $publishArguments = @('publish', 'src/ProtoBench.Desktop/ProtoBench.Desktop.csproj', '-c', $Configuration,
             '-r', 'win-x64', '--self-contained', $SelfContainedApp.IsPresent.ToString().ToLowerInvariant(), '-p:Platform=x64',
             '-p:UpdatesEnabled=false', '-o', (Join-Path $staging 'app'), '--nologo')
-        if ($Version) { $publishArguments += @("-p:Version=$Version", '-p:AssemblyVersion=1.0.0.0') }
+        if ($Version) { $publishArguments += @("-p:Version=$Version", '-p:AssemblyVersion=2.0.0.0') }
         Invoke-DotNet -Arguments $publishArguments
         # Unpackaged WinUI publish can omit compiled XAML resources even though the build output runs.
         # Include them explicitly so the standalone kit app can initialize App.xaml and its views.
-        $desktopOutputArguments = @('msbuild', 'src/NonStopToolkit.Desktop/NonStopToolkit.Desktop.csproj', '-nologo',
+        $desktopOutputArguments = @('msbuild', 'src/ProtoBench.Desktop/ProtoBench.Desktop.csproj', '-nologo',
             '-p:Platform=x64', "-p:Configuration=$Configuration", '-p:RuntimeIdentifier=win-x64', '-getProperty:TargetDir')
         $desktopOutput = (& dotnet @desktopOutputArguments)
         if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the desktop build output.' }
@@ -80,8 +80,8 @@ try {
         }
         # Use exactly the host's DLLs so the distributed SDK and test app cannot drift.
         $null = New-Item -ItemType Directory -Path (Join-Path $staging 'sdk/net10.0'), (Join-Path $staging 'sdk/winui') -Force
-        foreach ($name in $contractNames + @('NonStopToolkit.PluginSdk.WinUI')) {
-            $sdkTarget = if ($name -eq 'NonStopToolkit.PluginSdk.WinUI') { 'sdk/winui' } else { 'sdk/net10.0' }
+        foreach ($name in $contractNames + @('ProtoBench.PluginSdk.WinUI')) {
+            $sdkTarget = if ($name -eq 'ProtoBench.PluginSdk.WinUI') { 'sdk/winui' } else { 'sdk/net10.0' }
             foreach ($extension in @('.dll', '.pdb', '.xml', '.pri')) {
                 $sourceFile = Join-Path $staging ('app/' + $name + $extension)
                 if (Test-Path -LiteralPath $sourceFile -PathType Leaf) { Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $staging $sdkTarget) }
@@ -90,24 +90,24 @@ try {
     }
     else {
         Write-Host 'Building portable plugin SDK and dependencies…'
-        Invoke-DotNet -Arguments @('build', 'src/NonStopToolkit.PluginSdk/NonStopToolkit.PluginSdk.csproj', '-c', $Configuration, '-o', (Join-Path $staging 'sdk/net10.0'), '--nologo')
+        Invoke-DotNet -Arguments @('build', 'src/ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj', '-c', $Configuration, '-o', (Join-Path $staging 'sdk/net10.0'), '--nologo')
         Write-Host 'Building optional WinUI plugin SDK…'
-        Invoke-DotNet -Arguments @('build', 'src/NonStopToolkit.PluginSdk.WinUI/NonStopToolkit.PluginSdk.WinUI.csproj', '-c', $Configuration, '-p:Platform=x64', '-o', (Join-Path $staging 'sdk/winui'), '--nologo')
+        Invoke-DotNet -Arguments @('build', 'src/ProtoBench.PluginSdk.WinUI/ProtoBench.PluginSdk.WinUI.csproj', '-c', $Configuration, '-p:Platform=x64', '-o', (Join-Path $staging 'sdk/winui'), '--nologo')
         # WinUI runtime/reference packages come from the developer project's PackageReference.
         Get-ChildItem -LiteralPath (Join-Path $staging 'sdk/winui') -File |
-            Where-Object Name -NotLike 'NonStopToolkit.PluginSdk.WinUI.*' | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+            Where-Object Name -NotLike 'ProtoBench.PluginSdk.WinUI.*' | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
     }
     $references = foreach ($name in $contractNames) {
         if (-not (Test-Path -LiteralPath (Join-Path $staging "sdk/net10.0/$name.dll"))) { throw "Missing SDK dependency: $name" }
         '    <Reference Include="' + $name + '"><HintPath>$(MSBuildThisFileDirectory)net10.0/' + $name + '.dll</HintPath><Private>false</Private></Reference>'
     }
-    Write-Utf8 'sdk/NonStopToolkit.PluginSdk.props' ("<Project>`n  <ItemGroup>`n" + ($references -join "`n") + "`n  </ItemGroup>`n</Project>`n")
-    Write-Utf8 'sdk/NonStopToolkit.PluginSdk.WinUI.props' @'
+    Write-Utf8 'sdk/ProtoBench.PluginSdk.props' ("<Project>`n  <ItemGroup>`n" + ($references -join "`n") + "`n  </ItemGroup>`n</Project>`n")
+    Write-Utf8 'sdk/ProtoBench.PluginSdk.WinUI.props' @'
 <Project>
-  <Import Project="NonStopToolkit.PluginSdk.props" />
+  <Import Project="ProtoBench.PluginSdk.props" />
   <ItemGroup>
-    <Reference Include="NonStopToolkit.PluginSdk.WinUI">
-      <HintPath>$(MSBuildThisFileDirectory)winui/NonStopToolkit.PluginSdk.WinUI.dll</HintPath><Private>false</Private>
+    <Reference Include="ProtoBench.PluginSdk.WinUI">
+      <HintPath>$(MSBuildThisFileDirectory)winui/ProtoBench.PluginSdk.WinUI.dll</HintPath><Private>false</Private>
     </Reference>
   </ItemGroup>
 </Project>
@@ -127,7 +127,7 @@ try {
     $standardProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>__FRAMEWORK__</TargetFramework><EnableDynamicLoading>true</EnableDynamicLoading></PropertyGroup>
-  <Import Project="../../sdk/NonStopToolkit.PluginSdk.props" />
+  <Import Project="../../sdk/ProtoBench.PluginSdk.props" />
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="definitions/**/*.json" CopyToOutputDirectory="PreserveNewest" />
@@ -142,7 +142,7 @@ try {
     <UseWinUI>true</UseWinUI><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
     <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>
-  <Import Project="../../sdk/NonStopToolkit.PluginSdk.WinUI.props" />
+  <Import Project="../../sdk/ProtoBench.PluginSdk.WinUI.props" />
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="__WINDOWS_APP_SDK__" />
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
@@ -164,7 +164,7 @@ try {
     )) {
         $target = Join-Path $staging ('contracts/' + $source)
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force
-        Copy-Item -LiteralPath (Join-Path $repository ('src/NonStopToolkit.' + $source)) -Destination $target
+        Copy-Item -LiteralPath (Join-Path $repository ('src/ProtoBench.' + $source)) -Destination $target
     }
 
     Write-Host 'Verifying standalone starters and creating example plugin packages…'
@@ -180,8 +180,8 @@ try {
             if ((Get-FileHash -LiteralPath (Join-Path $staging "sdk/net10.0/$name.dll")).Hash -ne
                 (Get-FileHash -LiteralPath (Join-Path $staging "app/$name.dll")).Hash) { throw "SDK/app binary mismatch: $name" }
         }
-        if ((Get-FileHash -LiteralPath (Join-Path $staging 'sdk/winui/NonStopToolkit.PluginSdk.WinUI.dll')).Hash -ne
-            (Get-FileHash -LiteralPath (Join-Path $staging 'app/NonStopToolkit.PluginSdk.WinUI.dll')).Hash) { throw 'WinUI SDK/app binary mismatch.' }
+        if ((Get-FileHash -LiteralPath (Join-Path $staging 'sdk/winui/ProtoBench.PluginSdk.WinUI.dll')).Hash -ne
+            (Get-FileHash -LiteralPath (Join-Path $staging 'app/ProtoBench.PluginSdk.WinUI.dll')).Hash) { throw 'WinUI SDK/app binary mismatch.' }
     }
     # Verification builds are disposable. Keep source starters, ready-to-import packages and all published app files.
     foreach ($sample in @($standard, $native)) {
@@ -195,7 +195,7 @@ try {
         @{ name = $name; version = [Reflection.AssemblyName]::GetAssemblyName((Join-Path $staging "sdk/net10.0/$name.dll")).Version.ToString() }
     }
     Write-Utf8 'versions.json' (@{
-        apiVersion = 1; configuration = $Configuration; dotnetSdkUsed = [string]$sdkUsed; minimumSdk = $minimumSdk
+        apiVersion = 2; configuration = $Configuration; dotnetSdkUsed = [string]$sdkUsed; minimumSdk = $minimumSdk
         targetFramework = $framework; windowsTargetFramework = $windowsFramework; windowsAppSdk = $windowsAppSdk
         runtime = 'win-x64'; appIncluded = (-not $SkipApp); appSelfContained = ((-not $SkipApp) -and $SelfContainedApp.IsPresent); assemblies = @($assemblies)
     } | ConvertTo-Json -Depth 5)

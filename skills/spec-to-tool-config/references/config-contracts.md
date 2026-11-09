@@ -4,7 +4,7 @@ These notes describe schema version 1. Re-read the repository's schema and engin
 
 ## Term message profiles (`messages`)
 
-Read `docs/TERM-LOG-PARSER.md`, `tests/Fixtures/definitions/messages/synthetic-record-v1.json`, `src/NonStopToolkit.Parsing/Definitions/MessageProfile.cs`, and `Engines/RecordMessageParser.cs` before transcribing a Term spec. The test fixture contains synthetic engine-test rules, not a protocol specification. Parser specs are supplied by extensions or custom user definitions.
+Read `docs/TERM-LOG-PARSER.md`, `tests/Fixtures/definitions/messages/synthetic-record-v1.json`, `src/ProtoBench.Parsing/Definitions/MessageProfile.cs`, and `Engines/RecordMessageParser.cs` before transcribing a Term spec. The test fixture contains synthetic engine-test rules, not a protocol specification. Parser specs are supplied by extensions or custom user definitions.
 
 Allowed top-level properties:
 

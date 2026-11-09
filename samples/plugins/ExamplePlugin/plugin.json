@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "apiVersion": 1,
+  "apiVersion": 2,
   "id": "example.toolkit",
   "name": "Example Toolkit Extensions",
   "version": "1.0.0",

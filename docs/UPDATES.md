@@ -7,7 +7,7 @@
 Build/publish with these MSBuild properties, preferably supplied through a private release `.props` file or CI arguments:
 
 ```powershell
-dotnet publish src/NonStopToolkit.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:Version=1.1.0 -p:UpdatesEnabled=true -p:UpdateManifestUrl=https://your-host/latest.json -p:UpdateDownloadPageUrl=https://your-host/download -p:UpdateFeedUrl=https://your-host/updates -o artifacts/publish
+dotnet publish src/ProtoBench.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:Version=1.1.0 -p:UpdatesEnabled=true -p:UpdateManifestUrl=https://your-host/latest.json -p:UpdateDownloadPageUrl=https://your-host/download -p:UpdateFeedUrl=https://your-host/updates -o artifacts/publish
 ```
 
 Replace all three example URLs with real HTTPS URLs. Enabled builds fail when any URL property is omitted. The service also validates HTTPS URLs before any action. The values are compiled into assembly metadata; changing a local user setting cannot enable this feature. Build without these properties (or with `-p:UpdatesEnabled=false`) to disable it again.
@@ -30,7 +30,7 @@ Velopack 1.2.161 is pinned as a dependency. The custom WinUI entry point runs it
 Install the matching `vpk` tool in your release environment. After publishing an enabled build, package it, for example:
 
 ```powershell
-vpk pack --packId NonStopToolkit --packVersion 1.1.0 --packDir artifacts/publish --mainExe ProtoBench.exe --outputDir artifacts/releases
+vpk pack --packId ProtoBench --packVersion 1.1.0 --packDir artifacts/publish --mainExe ProtoBench.exe --outputDir artifacts/releases
 ```
 
 Keep `packVersion` and the app's `Version` property identical, and keep `packId` stable across releases. Publish the generated feed and update packages at `UpdateFeedUrl`. The SDK expects a Velopack release feed there, not a GitHub release webpage. A GitHub-specific source would require a different source adapter. Publish the installer and a separate ZIP of the ordinary publish folder on the download page. Update `latest.json` only after the release artifacts are available.

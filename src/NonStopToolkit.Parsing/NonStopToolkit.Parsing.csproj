@@ -1,1 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup></PropertyGroup><ItemGroup><ProjectReference Include="../NonStopToolkit.Core/NonStopToolkit.Core.csproj" /><ProjectReference Include="../NonStopToolkit.Utilities/NonStopToolkit.Utilities.csproj" /></ItemGroup></Project>
