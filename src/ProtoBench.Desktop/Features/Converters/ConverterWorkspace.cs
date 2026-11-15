@@ -19,6 +19,12 @@ public sealed class ConverterWorkspace : ToolWorkspace
     private ConversionMode mode;
     private bool removeSpaces;
     private int revision;
+    private TextEncodingOption textEncoding = TextEncodings.Ascii;
+    public TextEncodingOption TextEncoding
+    {
+        get => textEncoding;
+        set { if (SetProperty(ref textEncoding, value)) InvalidateResult(); }
+    }
     public bool RemoveSpaces
     {
         get => removeSpaces;
@@ -93,15 +99,16 @@ public sealed class ConverterWorkspace : ToolWorkspace
                 var from = FromBase;
                 var to = ToBase;
                 var selectedMode = Mode;
+                var encoding = TextEncoding;
                 var converted = await Task.Run(() => selectedMode switch
                 {
                     ConversionMode.Numeric => converter.Convert(text, from, to),
-                    ConversionMode.AsciiToHex => asciiConverter.ToHex(text),
-                    ConversionMode.HexToAscii => asciiConverter.ToAscii(text),
+                    ConversionMode.AsciiToHex => encoding == TextEncodings.Ascii ? asciiConverter.ToHex(text) : TextEncodings.ToHex(text, encoding),
+                    ConversionMode.HexToAscii => encoding == TextEncodings.Ascii ? asciiConverter.ToAscii(text) : TextEncodings.FromHex(text, encoding),
                     ConversionMode.TextToCp500 => cp500Converter.ToHex(text),
                     ConversionMode.Cp500ToText => cp500Converter.ToText(text),
-                    ConversionMode.AsciiHexToCp500 => cp500Converter.ToHex(asciiConverter.ToAscii(text)),
-                    ConversionMode.Cp500ToAsciiHex => asciiConverter.ToHex(cp500Converter.ToText(text)),
+                    ConversionMode.AsciiHexToCp500 => cp500Converter.ToHex(TextEncodings.FromHex(text, encoding)),
+                    ConversionMode.Cp500ToAsciiHex => TextEncodings.ToHex(cp500Converter.ToText(text), encoding),
                     _ => throw new ArgumentException("Select a supported conversion mode.")
                 }, token);
                 if (revision == inputRevision)

@@ -7,6 +7,7 @@ using System.Text.Json;
 using ProtoBench.Application.Workspaces;
 using ProtoBench.Core.Documents;
 using ProtoBench.Utilities.Networking;
+using ProtoBench.Utilities.Text;
 
 namespace ProtoBench.Desktop.Features.Networking;
 
@@ -22,6 +23,14 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     private bool verifyUpstreamCertificateTrust = true, verifyUpstreamCertificateValidity = true;
     private long lastSequence;
     private RelayCaptureEntry? selected;
+    private bool autoScroll = true;
+    private TextEncodingOption textEncoding = TextEncodings.Utf8;
+    public bool AutoScroll { get => autoScroll; set => SetProperty(ref autoScroll, value); }
+    public TextEncodingOption TextEncoding
+    {
+        get => textEncoding;
+        set { if (SetProperty(ref textEncoding, value)) OnPropertyChanged(nameof(SelectedText)); }
+    }
     private X509Certificate2? generatedCertificate, activeCertificate, activeRoot;
     private TcpRelay? relay;
     private RelayCaptureBuffer capture = new();
@@ -94,7 +103,7 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         }
     }
     public string SelectedHex => Selected?.Hex ?? "";
-    public string SelectedText => Selected?.Text ?? "";
+    public string SelectedText => Selected is null ? "" : TextEncoding.GetEncoding(strict: false).GetString(Selected.Data.Span);
     public string SelectedInfo => Selected is null ? "Select a capture entry to inspect it." : $"{Selected.Timestamp:O}\n{Selected.Summary}\n{Selected.Description}";
 
     public void CreateTestCertificate()
@@ -146,12 +155,32 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         finally { CryptographicOperations.ZeroMemory(bytes); }
     }
 
+    public IReadOnlyDictionary<string, string> ValidateConfiguration()
+    {
+        var errors = new Dictionary<string, string>();
+        if (!IPAddress.TryParse(ListenAddress.Trim(), out _))
+            errors[nameof(ListenAddress)] = "Enter a local listen IP address, such as 127.0.0.1 or 0.0.0.0.";
+        if (!int.TryParse(ListenPort, out var port) || port is < 1 or > 65535)
+            errors[nameof(ListenPort)] = "Enter a listen port between 1 and 65535.";
+        if (string.IsNullOrWhiteSpace(UpstreamHost))
+            errors[nameof(UpstreamHost)] = "Enter the upstream server host or IP address.";
+        if (!int.TryParse(UpstreamPort, out var targetPort) || targetPort is < 1 or > 65535)
+            errors[nameof(UpstreamPort)] = "Enter an upstream port between 1 and 65535.";
+        if (IncomingTls && !AutoDetectIncomingTls && generatedCertificate is null && string.IsNullOrWhiteSpace(CertificatePath))
+            errors[nameof(CertificatePath)] = "Create a test certificate or choose a PFX/P12 for incoming TLS.";
+        if (AutoDetectIncomingTls && generatedCertificate is null && string.IsNullOrWhiteSpace(CertificatePath) && string.IsNullOrWhiteSpace(CertificateName))
+            errors[nameof(CertificateName)] = "Enter a DNS name or IP for the automatic test certificate.";
+        return errors;
+    }
+
     public async Task StartAsync()
     {
         if (!CanConfigure) return;
         IsBusy = true; OnPropertyChanged(nameof(CanConfigure)); Error = "";
         try
         {
+            var validation = ValidateConfiguration();
+            if (validation.Count > 0) throw new FormatException(string.Join("\n", validation.Values));
             if (!IPAddress.TryParse(ListenAddress.Trim(), out var address)) throw new FormatException("Enter a local listen IP address, such as 127.0.0.1 or 0.0.0.0.");
             if (!int.TryParse(ListenPort, out var port) || port is < 1 or > 65535 || !int.TryParse(UpstreamPort, out var targetPort) || targetPort is < 1 or > 65535)
                 throw new FormatException("Listen and upstream ports must be between 1 and 65535.");

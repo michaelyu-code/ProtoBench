@@ -10,6 +10,50 @@ namespace ProtoBench.Application.Tests;
 public sealed class NetworkRelayWorkspaceTests
 {
     [Fact]
+    public async Task ValidationIdentifiesEachRequiredFieldAndTlsCertificate()
+    {
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter())
+        {
+            ListenAddress = " ", ListenPort = "", UpstreamHost = " ", UpstreamPort = "", IncomingMode = 1
+        };
+        var errors = workspace.ValidateConfiguration();
+        Assert.Equal(5, errors.Count);
+        Assert.Contains(nameof(workspace.ListenAddress), errors.Keys);
+        Assert.Contains(nameof(workspace.ListenPort), errors.Keys);
+        Assert.Contains(nameof(workspace.UpstreamHost), errors.Keys);
+        Assert.Contains(nameof(workspace.UpstreamPort), errors.Keys);
+        Assert.Contains(nameof(workspace.CertificatePath), errors.Keys);
+        await workspace.StartAsync();
+        Assert.False(workspace.IsRunning);
+        Assert.Contains("upstream server", workspace.Error);
+        workspace.ListenAddress = "127.0.0.1"; workspace.ListenPort = "9000";
+        workspace.UpstreamHost = "localhost"; workspace.UpstreamPort = "443";
+        workspace.IncomingMode = 2;
+        Assert.Empty(workspace.ValidateConfiguration());
+        workspace.CertificateName = " ";
+        Assert.Contains(nameof(workspace.CertificateName), workspace.ValidateConfiguration().Keys);
+        workspace.IncomingMode = 0;
+        Assert.Empty(workspace.ValidateConfiguration());
+    }
+
+    [Fact]
+    public void ChangingPreviewEncodingRedecodesSelectedBytes()
+    {
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
+        workspace.Selected = new(1, DateTimeOffset.UtcNow, 1, ProtoBench.Utilities.Networking.RelayDirection.ClientToServer, "", new byte[] { 0xE9, 0x80 });
+        Assert.Equal("UTF-8", workspace.TextEncoding.Name);
+        Assert.Contains("�", workspace.SelectedText);
+        workspace.TextEncoding = ProtoBench.Utilities.Text.TextEncodings.Options.Single(e => e.CodePage == 28591);
+        Assert.Equal("é\u0080", workspace.SelectedText);
+        workspace.TextEncoding = ProtoBench.Utilities.Text.TextEncodings.Options.Single(e => e.CodePage == 1252);
+        Assert.Equal("é€", workspace.SelectedText);
+        Assert.Equal("E980", workspace.SelectedHex);
+        Assert.True(workspace.AutoScroll);
+        workspace.AutoScroll = false;
+        Assert.False(workspace.AutoScroll);
+    }
+
+    [Fact]
     public async Task InvalidConfigurationDoesNotStartAndGeneratedCertificateExportsPublicOnly()
     {
         using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
