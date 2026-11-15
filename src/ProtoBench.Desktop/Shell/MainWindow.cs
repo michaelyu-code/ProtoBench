@@ -33,7 +33,7 @@ public sealed class MainWindow : Window
         AlwaysShowHeader = false,
         IsPaneToggleButtonVisible = false
     };
-    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.SizeToContent };
+    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.SizeToContent, VerticalAlignment = VerticalAlignment.Stretch };
     private readonly InfoBar notification = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly Grid root = new();
     private readonly DashboardView dashboard;

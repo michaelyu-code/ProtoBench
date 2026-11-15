@@ -17,7 +17,9 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     private string listenAddress = "127.0.0.1", listenPort = "9000", upstreamHost = "", upstreamPort = "", tlsServerName = "";
     private string certificatePath = "", certificatePassword = "", certificateName = "localhost", upstreamRootPath = "";
     private string certificateInfo = "No incoming TLS certificate selected.", summary = "No captured traffic.", error = "";
-    private bool incomingTls, upstreamTls, running, disposed;
+    private bool incomingTls, autoDetectIncomingTls, upstreamTls, matchIncomingTls, running, disposed;
+    private bool verifyUpstreamHostname = true;
+    private bool verifyUpstreamCertificateTrust = true, verifyUpstreamCertificateValidity = true;
     private long lastSequence;
     private RelayCaptureEntry? selected;
     private X509Certificate2? generatedCertificate, activeCertificate, activeRoot;
@@ -42,8 +44,37 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     public string CertificatePassword { get => certificatePassword; set => SetProperty(ref certificatePassword, value); }
     public string CertificateName { get => certificateName; set => SetProperty(ref certificateName, value); }
     public string UpstreamRootPath { get => upstreamRootPath; set => SetProperty(ref upstreamRootPath, value); }
-    public bool IncomingTls { get => incomingTls; set => SetProperty(ref incomingTls, value); }
-    public bool UpstreamTls { get => upstreamTls; set => SetProperty(ref upstreamTls, value); }
+    public bool IncomingTls { get => incomingTls; set { if (SetProperty(ref incomingTls, value)) OnPropertyChanged(nameof(IncomingMode)); } }
+    public bool AutoDetectIncomingTls { get => autoDetectIncomingTls; set { if (SetProperty(ref autoDetectIncomingTls, value)) OnPropertyChanged(nameof(IncomingMode)); } }
+    public int IncomingMode
+    {
+        get => AutoDetectIncomingTls ? 2 : IncomingTls ? 1 : 0;
+        set
+        {
+            if (value is < 0 or > 2) return;
+            var changed = incomingTls != (value == 1) || autoDetectIncomingTls != (value == 2);
+            incomingTls = value == 1; autoDetectIncomingTls = value == 2;
+            if (!changed) return;
+            OnPropertyChanged(nameof(IncomingTls)); OnPropertyChanged(nameof(AutoDetectIncomingTls)); OnPropertyChanged();
+        }
+    }
+    public bool UpstreamTls { get => upstreamTls; set { if (SetProperty(ref upstreamTls, value)) OnPropertyChanged(nameof(UpstreamMode)); } }
+    public bool MatchIncomingTls { get => matchIncomingTls; set { if (SetProperty(ref matchIncomingTls, value)) OnPropertyChanged(nameof(UpstreamMode)); } }
+    public bool VerifyUpstreamHostname { get => verifyUpstreamHostname; set => SetProperty(ref verifyUpstreamHostname, value); }
+    public bool VerifyUpstreamCertificateTrust { get => verifyUpstreamCertificateTrust; set => SetProperty(ref verifyUpstreamCertificateTrust, value); }
+    public bool VerifyUpstreamCertificateValidity { get => verifyUpstreamCertificateValidity; set => SetProperty(ref verifyUpstreamCertificateValidity, value); }
+    public int UpstreamMode
+    {
+        get => MatchIncomingTls ? 2 : UpstreamTls ? 1 : 0;
+        set
+        {
+            if (value is < 0 or > 2) return;
+            var changed = upstreamTls != (value == 1) || matchIncomingTls != (value == 2);
+            upstreamTls = value == 1; matchIncomingTls = value == 2;
+            if (!changed) return;
+            OnPropertyChanged(nameof(UpstreamTls)); OnPropertyChanged(nameof(MatchIncomingTls)); OnPropertyChanged();
+        }
+    }
     public bool IsRunning
     {
         get => running;
@@ -70,15 +101,17 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     {
         if (!CanConfigure) return;
         Error = "";
-        try
-        {
-            var certificate = RelayTestCertificate.Create(CertificateName.Trim());
-            CertificatePath = "";
-            generatedCertificate?.Dispose(); generatedCertificate = certificate;
-            IncomingTls = true;
-            CertificateInfo = $"Test certificate for {CertificateName.Trim()} · expires {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd} UTC\nSHA-256: {Convert.ToHexString(SHA256.HashData(certificate.RawData))}\nExport the public certificate for your client's trust configuration. This test identity is discarded when you regenerate it or close this tab.";
-        }
+        try { CreateTestCertificateCore(); }
         catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException) { Error = ex.Message; }
+    }
+
+    private void CreateTestCertificateCore()
+    {
+        var certificate = RelayTestCertificate.Create(CertificateName.Trim());
+        CertificatePath = "";
+        generatedCertificate?.Dispose(); generatedCertificate = certificate;
+        if (!AutoDetectIncomingTls) IncomingTls = true;
+        CertificateInfo = $"Test certificate for {CertificateName.Trim()} · expires {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd} UTC\nSHA-256: {Convert.ToHexString(SHA256.HashData(certificate.RawData))}\nExport the public certificate for your client's trust configuration. This test identity is discarded when you regenerate it or close this tab.";
     }
 
     private static async Task<byte[]> ReadBoundedAsync(string path, CancellationToken token)
@@ -124,10 +157,14 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
                 throw new FormatException("Listen and upstream ports must be between 1 and 65535.");
             var options = new TcpRelayOptions(address, port, UpstreamHost.Trim(), targetPort)
             {
-                IncomingTls = IncomingTls, UpstreamTls = UpstreamTls, TlsServerName = TlsServerName.Trim()
+                IncomingTls = IncomingTls, AutoDetectIncomingTls = AutoDetectIncomingTls, UpstreamTls = UpstreamTls,
+                MatchIncomingTls = MatchIncomingTls, VerifyUpstreamHostname = VerifyUpstreamHostname,
+                VerifyUpstreamCertificateTrust = VerifyUpstreamCertificateTrust, VerifyUpstreamCertificateValidity = VerifyUpstreamCertificateValidity,
+                TlsServerName = TlsServerName.Trim()
             };
-            if (IncomingTls) activeCertificate = await LoadIncomingCertificateAsync(CancellationToken.None);
-            if (UpstreamTls && !string.IsNullOrWhiteSpace(UpstreamRootPath))
+            if (AutoDetectIncomingTls && generatedCertificate is null && string.IsNullOrWhiteSpace(CertificatePath)) CreateTestCertificateCore();
+            if (IncomingTls || AutoDetectIncomingTls) activeCertificate = await LoadIncomingCertificateAsync(CancellationToken.None);
+            if ((UpstreamTls || MatchIncomingTls) && !string.IsNullOrWhiteSpace(UpstreamRootPath))
             {
                 var rootBytes = await ReadBoundedAsync(UpstreamRootPath, CancellationToken.None);
                 activeRoot = X509CertificateLoader.LoadCertificate(rootBytes);
@@ -173,7 +210,11 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         var first = snapshot.Entries.Count == 0 ? long.MaxValue : snapshot.Entries[0].Sequence;
         while (Entries.Count > 0 && Entries[0].Sequence < first) Entries.RemoveAt(0);
         if (Selected is not null && !snapshot.Entries.Any(e => e.Sequence == Selected.Sequence)) Selected = null;
-        foreach (var entry in snapshot.Entries.Where(e => e.Sequence > lastSequence)) { Entries.Add(entry); lastSequence = entry.Sequence; }
+        foreach (var entry in snapshot.Entries.Where(e => e.Sequence > lastSequence))
+        {
+            Entries.Add(entry); lastSequence = entry.Sequence;
+            if (entry.Description.StartsWith("Connection failed:", StringComparison.Ordinal)) Error = entry.Description;
+        }
         Summary = $"{relay?.ActiveConnections ?? 0} active connections · Client → Server: {snapshot.ClientBytes:N0} bytes · Server → Client: {snapshot.ServerBytes:N0} bytes\n{snapshot.Entries.Count:N0} retained entries · {snapshot.EvictedEntries:N0} older entries evicted (limit: 1,024 entries / 4 MiB).";
         if (IsRunning && relay?.Completion.IsCompleted == true) _ = StopAsync();
     }

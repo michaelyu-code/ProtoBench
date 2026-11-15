@@ -103,4 +103,38 @@ public sealed class NetworkRelayWorkspaceTests
         }
         finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(pfx); File.Delete(path); }
     }
+
+    [Fact]
+    public async Task AutoModeCreatesCertificateAndRetainsAutoSelectionWhenRegenerated()
+    {
+        using var reserve = new TcpListener(IPAddress.Loopback, 0); reserve.Start();
+        var port = ((IPEndPoint)reserve.LocalEndpoint).Port; reserve.Stop();
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter())
+        {
+            ListenPort = port.ToString(), UpstreamHost = "localhost", UpstreamPort = "443", IncomingMode = 2
+        };
+        Assert.True(workspace.AutoDetectIncomingTls); Assert.False(workspace.IncomingTls);
+        await workspace.StartAsync(); Assert.True(workspace.IsRunning); Assert.Contains("SHA-256", workspace.CertificateInfo);
+        await workspace.StopAsync(); workspace.CreateTestCertificate();
+        Assert.Equal(2, workspace.IncomingMode);
+        workspace.IncomingMode = 1; Assert.True(workspace.IncomingTls); Assert.False(workspace.AutoDetectIncomingTls);
+        workspace.IncomingMode = 0; Assert.False(workspace.IncomingTls); Assert.False(workspace.AutoDetectIncomingTls);
+    }
+
+    [Fact]
+    public void UpstreamMatchAndHostnameOptionsHaveClearIndependentDefaults()
+    {
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
+        Assert.True(workspace.VerifyUpstreamHostname); Assert.Equal(0, workspace.UpstreamMode);
+        Assert.True(workspace.VerifyUpstreamCertificateTrust); Assert.True(workspace.VerifyUpstreamCertificateValidity);
+        workspace.VerifyUpstreamCertificateTrust = false;
+        Assert.True(workspace.VerifyUpstreamCertificateValidity); Assert.True(workspace.VerifyUpstreamHostname);
+        workspace.VerifyUpstreamCertificateValidity = false;
+        workspace.UpstreamMode = 2; Assert.True(workspace.MatchIncomingTls); Assert.False(workspace.UpstreamTls);
+        workspace.VerifyUpstreamHostname = false;
+        workspace.UpstreamMode = 1; Assert.True(workspace.UpstreamTls); Assert.False(workspace.MatchIncomingTls);
+        Assert.False(workspace.VerifyUpstreamHostname);
+        Assert.False(workspace.VerifyUpstreamCertificateTrust); Assert.False(workspace.VerifyUpstreamCertificateValidity);
+        workspace.UpstreamMode = 0; Assert.False(workspace.UpstreamTls); Assert.False(workspace.MatchIncomingTls);
+    }
 }

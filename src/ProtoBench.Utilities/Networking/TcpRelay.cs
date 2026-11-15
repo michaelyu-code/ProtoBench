@@ -10,7 +10,12 @@ namespace ProtoBench.Utilities.Networking;
 public sealed record TcpRelayOptions(IPAddress ListenAddress, int ListenPort, string UpstreamHost, int UpstreamPort)
 {
     public bool IncomingTls { get; init; }
+    public bool AutoDetectIncomingTls { get; init; }
     public bool UpstreamTls { get; init; }
+    public bool MatchIncomingTls { get; init; }
+    public bool VerifyUpstreamHostname { get; init; } = true;
+    public bool VerifyUpstreamCertificateTrust { get; init; } = true;
+    public bool VerifyUpstreamCertificateValidity { get; init; } = true;
     public string TlsServerName { get; init; } = "";
     // Caller owns these certificates and must retain them until Completion finishes.
     public X509Certificate2? ListenerCertificate { get; init; }
@@ -25,7 +30,7 @@ public sealed record TcpRelayOptions(IPAddress ListenAddress, int ListenPort, st
         if (string.IsNullOrWhiteSpace(UpstreamHost) || UpstreamHost.Length > 253 || Uri.CheckHostName(UpstreamHost) == UriHostNameType.Unknown)
             throw new ArgumentException("Enter an upstream hostname or IP address, without a scheme or port.");
         if (TlsServerName.Length > 253 || TlsServerName.Length > 0 && Uri.CheckHostName(TlsServerName) == UriHostNameType.Unknown) throw new ArgumentException("Enter a valid TLS server name.");
-        if (IncomingTls && ListenerCertificate?.HasPrivateKey != true) throw new ArgumentException("Incoming TLS needs a server certificate with its private key.");
+        if ((IncomingTls || AutoDetectIncomingTls) && ListenerCertificate?.HasPrivateKey != true) throw new ArgumentException("Incoming TLS or Auto mode needs a server certificate with its private key.");
         if (MaximumConnections is < 1 or > 128 || SetupTimeout <= TimeSpan.Zero || SetupTimeout > TimeSpan.FromMinutes(5)) throw new ArgumentException("Invalid connection limit or setup timeout.");
     }
 }
@@ -109,7 +114,16 @@ public sealed class TcpRelay : IAsyncDisposable
             using var setup = CancellationTokenSource.CreateLinkedTokenSource(connection.Token);
             setup.CancelAfter(options.SetupTimeout);
             Stream incoming = client.GetStream();
-            if (options.IncomingTls)
+            var useIncomingTls = options.IncomingTls;
+            if (options.AutoDetectIncomingTls)
+            {
+                var first = new byte[1];
+                var count = await client.Client.ReceiveAsync(first.AsMemory(), SocketFlags.Peek, setup.Token).ConfigureAwait(false);
+                if (count == 0) { Capture.Add(id, RelayDirection.None, "Client closed before sending its first byte."); return; }
+                useIncomingTls = first[0] == 0x16;
+                Capture.Add(id, RelayDirection.None, $"Auto detected first byte 0x{first[0]:X2}: {(useIncomingTls ? "TLS" : "plain TCP")}. Byte preserved for the connection stream.");
+            }
+            if (useIncomingTls)
             {
                 incomingSsl = new SslStream(incoming, leaveInnerStreamOpen: true);
                 await incomingSsl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
@@ -127,29 +141,65 @@ public sealed class TcpRelay : IAsyncDisposable
                 (remote.Address.Equals(LocalEndpoint.Address) || (IPAddress.IsLoopback(remote.Address) && (IPAddress.IsLoopback(LocalEndpoint.Address) || LocalEndpoint.Address.Equals(IPAddress.Any) || LocalEndpoint.Address.Equals(IPAddress.IPv6Any)))))
                 throw new IOException("The upstream endpoint resolves back to this listener.");
             Stream outgoing = upstream.GetStream();
-            if (options.UpstreamTls)
+            var useUpstreamTls = options.MatchIncomingTls ? useIncomingTls : options.UpstreamTls;
+            Capture.Add(id, RelayDirection.None, $"Upstream transport: {(useUpstreamTls ? "TLS" : "plain TCP")}{(options.MatchIncomingTls ? " (matches incoming connection)" : "")}.");
+            if (useUpstreamTls)
             {
                 upstreamSsl = new SslStream(outgoing, leaveInnerStreamOpen: true);
+                var clientServerName = incomingSsl?.TargetHostName;
+                var targetName = !string.IsNullOrWhiteSpace(options.TlsServerName) ? options.TlsServerName :
+                    options.MatchIncomingTls && !string.IsNullOrWhiteSpace(clientServerName) ? clientServerName : options.UpstreamHost;
+                Capture.Add(id, RelayDirection.None, $"Upstream TLS server name / SNI: {targetName}{(string.IsNullOrWhiteSpace(options.TlsServerName) && options.MatchIncomingTls && !string.IsNullOrWhiteSpace(clientServerName) ? " (from client SNI)" : "")}.");
+                string? validationFailure = null;
                 var authentication = new SslClientAuthenticationOptions
                 {
-                    TargetHost = string.IsNullOrWhiteSpace(options.TlsServerName) ? options.UpstreamHost : options.TlsServerName,
+                    TargetHost = targetName,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+                    {
+                        // Chain policy handles trust/date relaxations independently.
+                        // This callback relaxes only the separately configured name check.
+                        if (!options.VerifyUpstreamHostname) errors &= ~SslPolicyErrors.RemoteCertificateNameMismatch;
+                        if (errors == SslPolicyErrors.None) return true;
+                        validationFailure = $"Upstream TLS certificate validation failed for '{targetName}' at {options.UpstreamHost}:{options.UpstreamPort}: {errors}.";
+                        if ((errors & SslPolicyErrors.RemoteCertificateNameMismatch) != 0)
+                            validationFailure += " Set 'TLS server name / SNI' to a DNS name or IP in the upstream certificate's Subject Alternative Name; the connection host can remain an IP address.";
+                        if ((errors & SslPolicyErrors.RemoteCertificateChainErrors) != 0)
+                            validationFailure += " Check the enabled upstream trust/validity checks, or select its trusted CA under upstream TLS options.";
+                        if (certificate is not null)
+                        {
+                            using var publicCertificate = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+                            validationFailure += $" Server subject: {publicCertificate.Subject}.";
+                            var san = publicCertificate.Extensions["2.5.29.17"];
+                            if (san is not null)
+                            {
+                                try { validationFailure += $" Server SAN: {san.Format(false)}."; }
+                                catch (System.Security.Cryptography.CryptographicException) { }
+                            }
+                        }
+                        return false;
+                    }
                 };
+                var verification = X509VerificationFlags.NoFlag;
+                if (!options.VerifyUpstreamCertificateTrust) verification |= X509VerificationFlags.AllowUnknownCertificateAuthority;
+                if (!options.VerifyUpstreamCertificateValidity) verification |= X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
+                authentication.CertificateChainPolicy = new X509ChainPolicy
+                {
+                    RevocationMode = X509RevocationMode.NoCheck,
+                    VerificationFlags = verification,
+                    DisableCertificateDownloads = !options.VerifyUpstreamCertificateTrust || options.UpstreamTrustedRoot is not null
+                };
+                authentication.CertificateChainPolicy.ApplicationPolicy.Add(new("1.3.6.1.5.5.7.3.1"));
                 if (options.UpstreamTrustedRoot is not null)
                 {
-                    authentication.CertificateChainPolicy = new X509ChainPolicy
-                    {
-                        TrustMode = X509ChainTrustMode.CustomRootTrust,
-                        RevocationMode = X509RevocationMode.NoCheck,
-                        DisableCertificateDownloads = true
-                    };
+                    authentication.CertificateChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
                     authentication.CertificateChainPolicy.CustomTrustStore.Add(options.UpstreamTrustedRoot);
-                    authentication.CertificateChainPolicy.ApplicationPolicy.Add(new("1.3.6.1.5.5.7.3.1"));
                 }
-                await upstreamSsl.AuthenticateAsClientAsync(authentication, setup.Token).ConfigureAwait(false);
+                try { await upstreamSsl.AuthenticateAsClientAsync(authentication, setup.Token).ConfigureAwait(false); }
+                catch (AuthenticationException ex) when (validationFailure is not null) { throw new AuthenticationException(validationFailure, ex); }
                 outgoing = upstreamSsl;
-                Capture.Add(id, RelayDirection.None, $"Upstream TLS: {upstreamSsl.SslProtocol} · {upstreamSsl.NegotiatedCipherSuite}; certificate and hostname validated.");
+                Capture.Add(id, RelayDirection.None, $"Upstream TLS: {upstreamSsl.SslProtocol} · {upstreamSsl.NegotiatedCipherSuite}; hostname verification {(options.VerifyUpstreamHostname ? "enabled" : "disabled")}; certificate trust verification {(options.VerifyUpstreamCertificateTrust ? "enabled" : "disabled")}; certificate validity dates verification {(options.VerifyUpstreamCertificateValidity ? "enabled" : "disabled")}.");
             }
             Capture.Add(id, RelayDirection.None, "Relay ready.");
             var forward = PumpAsync(incoming, outgoing, upstream.Client, id, RelayDirection.ClientToServer, connection);
@@ -157,7 +207,12 @@ public sealed class TcpRelay : IAsyncDisposable
             await Task.WhenAll(forward, reverse).ConfigureAwait(false);
         }
         catch (Exception ex) when (token.IsCancellationRequested && ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException) { }
-        catch (Exception ex) { Capture.Add(id, RelayDirection.None, $"Connection failed: {ex.GetType().Name}: {ex.GetBaseException().Message}"); }
+        catch (Exception ex)
+        {
+            var message = ex.Message;
+            if (message != ex.GetBaseException().Message) message += $" ({ex.GetBaseException().Message})";
+            Capture.Add(id, RelayDirection.None, $"Connection failed: {ex.GetType().Name}: {message}");
+        }
         finally
         {
             connection.Cancel();

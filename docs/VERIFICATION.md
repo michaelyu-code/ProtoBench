@@ -1,5 +1,21 @@
 # Verification record
 
+## Relay payload tab alignment — 16 November 2026
+
+Moved the capture summary into the left traffic pane so the right Hex/Text/Details tabs start at the top of the shared card in the side-by-side layout. Summary text can use four lines within the narrower traffic pane. The existing narrow-window stacking and footer actions are retained. The tab alignment was visually checked in the running app; the Desktop build passed with zero warnings/errors.
+
+## Independent upstream trust and validity-date checks — 16 November 2026
+
+Added Verify upstream certificate trust and Verify upstream validity dates alongside hostname verification, all enabled by default. Unknown-CA/partial-chain and date errors can be relaxed independently through chain-policy flags; other certificate/TLS errors remain enforced. Connection events record all three settings. Nine real-socket test cases cover trusted/untrusted, expired/not-yet-valid and wrong-name combinations, including successful traffic when the relevant checks are disabled and rejection when an unrelated enabled check fails. The full suite passed 425 tests with one existing opt-in test skipped; the Desktop build passed with zero warnings/errors.
+
+## Relay upstream matching and hostname control
+
+Added Upstream connection choices Plain TCP, TLS and Match incoming, plus Verify upstream hostname (default on). Matching follows each incoming connection's actual transport; upstream SNI uses an explicit override, then client SNI in Match mode, then the configured upstream host. Endpoint routing remains fixed and TLS versions/ciphers negotiate independently. Real-socket tests cover mixed transports, client-SNI reuse, missing-SNI fallback and an override with a different upstream certificate name. Disabling hostname verification allows a name mismatch with a trusted valid certificate while still rejecting untrusted and expired certificates. The full suite passed 416 tests with one existing opt-in test skipped; Desktop builds passed with zero warnings/errors. The new upstream dropdown, Match incoming selection and checked-by-default hostname control were visually verified in the running app.
+
+## Relay viewport, automatic TLS and hostname diagnostics — 15 November 2026
+
+Replaced the relay's scrolling page with bounded grid rows and independent traffic/payload panes, enabled stretching in the shell and payload TabViews, compacted the toolbar and added height-aware connection-panel collapse. The layout was visually checked at the normal 1320×900 startup size and in a temporary 840×640 QA build; traffic and the hex/text inspector stayed in the same viewport, with connection settings collapsed in the short window. The QA-only startup-size change was reverted. Incoming Auto mode peeks without consuming the first byte, selecting TLS for `0x16` and plain TCP otherwise, and generates a test certificate if needed. Upstream certificate errors now report the checked name, subject/SAN and SNI/trust guidance while retaining strict validation. The full suite passed 409 tests with one existing opt-in 2 GiB test skipped, including mixed plain/TLS clients on one port, preserved first bytes, empty/silent clients, stop during peek, automatic certificate creation and useful name-mismatch diagnostics. Desktop builds passed with zero warnings/errors.
+
 ## Relay layout — 15 November 2026
 
 The relay now places the full-width Connection section above the full-width Traffic section. Listen and upstream settings sit beside each other within Connection and stack on narrower windows using the existing adaptive layout. The revised layout was visually checked in the running app; the Desktop build passed with zero warnings/errors.
