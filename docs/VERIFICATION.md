@@ -1,5 +1,17 @@
 # Verification record
 
+## Relay layout — 15 November 2026
+
+The relay now places the full-width Connection section above the full-width Traffic section. Listen and upstream settings sit beside each other within Connection and stack on narrower windows using the existing adaptive layout. The revised layout was visually checked in the running app; the Desktop build passed with zero warnings/errors.
+
+## TCP / TLS relay — 15 November 2026
+
+Added a Utilities workspace with independent incoming/upstream TLS, PFX/P12 loading, test-certificate creation and public certificate export, upstream trust/name validation, a bounded traffic ring, hex/UTF-8 inspection and JSON Lines export. Real loopback integration tests cover all four plain/TLS leg combinations with binary payloads, concurrent clients, plain TCP half-close, trust/name rejection, connection limits, setup timeouts, shutdown/port release, capture eviction and workspace/PFX/export lifecycle. The full suite passed 406 tests with one existing opt-in 2 GiB test skipped. Desktop builds completed with zero warnings/errors. Windows UI automation opened the workspace, started/stopped it, confirmed configuration locking, relayed `Hello` and received `ACK:Hello`, observed both capture directions and byte counts, and checked `41434B3A48656C6C6F` / `ACK:Hello` in the hex/text inspectors. Test-certificate generation displayed its SHA-256 fingerprint and expiry. No machine trust or firewall settings were changed. The file-picker export dialogs and remote/LAN clients have not been exercised interactively.
+
+## Collapsed sidebar category selection — 15 November 2026
+
+The collapsed navigation rail uses direct category entries so a category click filters the dashboard without opening a child flyout. The expanded sidebar retains its nested tool entries. Windows UI automation reproduced the original problem: with a child flyout open, the first click on another category only dismissed it. In the revised running build, clicking Converters and then Calculators once changed the dashboard from one converter to three calculators. Expanding the sidebar and Converters restored the Base Converter child entry. The Desktop build completed with zero warnings and errors.
+
 ## Adjustable field-details width — 8 November 2026
 
 Added a 12px draggable native Thumb divider between field list and details, a horizontal resize cursor and hover/pressed grip feedback. Left/Right keyboard controls adjust by 16px; Home restores the automatic default. Width is retained per parser view across field/message changes and narrow-window stacking, and clamped to keep at least 180px for fields and 220px for details. The divider is hidden for stacked or closed details. The normal Debug solution builds with zero warnings/errors. Dragging, keyboard resizing and focus appearance still require an interactive smoke check; no backend behavior changed.

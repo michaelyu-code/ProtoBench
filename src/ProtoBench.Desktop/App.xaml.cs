@@ -10,6 +10,8 @@ using ProtoBench.Desktop.Features.Parsers;
 using ProtoBench.Desktop.Features.Generators;
 using ProtoBench.Desktop.Features.Payments;
 using ProtoBench.Desktop.Features.Calculators;
+using ProtoBench.Desktop.Features.Certificates;
+using ProtoBench.Desktop.Features.Networking;
 using ProtoBench.Desktop.Features.Plugins;
 using ProtoBench.Infrastructure.Plugins;
 using ProtoBench.Desktop.Shell;
@@ -84,6 +86,14 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddSingleton(new ToolDescriptor("bitwise-calculator", "Bitwise Calculator", "AND, OR, XOR, NOT, logical shifts and rotations in binary, decimal and hex.", ToolCategory.Calculators, "\uE8EF"));
         collection.AddSingleton(new ToolDescriptor("base64-calculator", "Base64", "Encode/decode UTF-8 text and hex bytes with standard or URL-safe Base64.", ToolCategory.Calculators, "\uE8EF"));
         collection.AddSingleton(new ToolDescriptor("3des-calculator", "3DES Calculator", "Encrypt/decrypt hex bytes with two-key or three-key Triple DES, ECB/CBC and explicit padding.", ToolCategory.Calculators, "\uE72E"));
+        collection.AddSingleton(new ToolDescriptor("certificate-inspector", "X.509 Certificate Inspector", "PKI certificate inspection: PEM/DER, validity, SANs, fingerprints, RSA modulus/exponent and public key export.", ToolCategory.Utilities, "\uE72E"));
+        collection.AddTransient<CertificateWorkspace>();
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<CertificateWorkspace>("certificate-inspector", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, CertificateViewFactory>();
+        collection.AddSingleton(new ToolDescriptor("network-relay", "TCP / TLS Relay", "Network proxy / MITM: forward raw TCP, inspect client and server hex/text, terminate TLS and create test certificates.", ToolCategory.Utilities, "\uE968"));
+        collection.AddTransient<NetworkRelayWorkspace>();
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<NetworkRelayWorkspace>("network-relay", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, NetworkRelayViewFactory>();
         var packages = new PluginPackageManager(Path.Combine(AppPaths.UserDirectory, "plugins"));
         var plugins = PluginCatalog.Load(packages,
             collection.Where(s => s.ServiceType == typeof(ToolDescriptor)).Select(s => ((ToolDescriptor)s.ImplementationInstance!).Id),

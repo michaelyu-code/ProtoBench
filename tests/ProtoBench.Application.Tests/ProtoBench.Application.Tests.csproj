@@ -3,6 +3,9 @@
     <ItemGroup><ProjectReference Include="../../src/ProtoBench.Application/ProtoBench.Application.csproj" /><ProjectReference Include="../../src/ProtoBench.Infrastructure/ProtoBench.Infrastructure.csproj" />
     <ProjectReference Include="../../samples/plugins/ExamplePlugin/ExamplePlugin.csproj" />
     <ProjectReference Include="../../src/ProtoBench.Parsing/ProtoBench.Parsing.csproj" />
+    <ProjectReference Include="../../src/ProtoBench.Utilities/ProtoBench.Utilities.csproj" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Certificates/CertificateWorkspace.cs" Link="Desktop/CertificateWorkspace.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Networking/NetworkRelayWorkspace.cs" Link="Desktop/NetworkRelayWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserWorkspace.cs" Link="Desktop/ParserWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserResultPresentation.cs" Link="Desktop/ParserResultPresentation.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserTablePan.cs" Link="Desktop/ParserTablePan.cs" />

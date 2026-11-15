@@ -43,6 +43,8 @@ public sealed class MainWindow : Window
     private readonly ShellHeader header = new();
     private readonly NavigationViewItem home = new() { Content = "Dashboard", Icon = new SymbolIcon(Symbol.Home), Tag = "dashboard" };
     private readonly Dictionary<string, NavigationViewItem> toolItems = new();
+    private readonly Dictionary<ToolCategory, NavigationViewItem> categoryItems = new();
+    private readonly Dictionary<ToolCategory, NavigationViewItem> compactCategoryItems = new();
     private readonly Dictionary<string, int> instanceNumbers = new();
 
     public MainWindow(ShellViewModel vm, IEnumerable<IWorkspaceViewFactory> views, ILogger<MainWindow> logger, UpdateService updates,
@@ -97,8 +99,18 @@ public sealed class MainWindow : Window
                 toolItems.Add(tool.Id, item);
                 group.MenuItems.Add(item);
             }
+            categoryItems.Add(category.Key, group);
+            var compact = new NavigationViewItem
+            {
+                Content = group.Content, Tag = category.Key,
+                Icon = new SymbolIcon(CategoryIcon(category.Key))
+            };
+            ToolTipService.SetToolTip(compact, $"{category.Key.DisplayName()} · {category.Count()} tools");
+            compactCategoryItems.Add(category.Key, compact);
             navigation.MenuItems.Add(group);
         }
+        navigation.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationHierarchy());
+        UpdateNavigationHierarchy();
         navigation.ItemInvoked += (_, args) =>
         {
             if (args.IsSettingsInvoked)
@@ -217,12 +229,26 @@ public sealed class MainWindow : Window
         tabs.SelectedItem = tab;
     }
 
+    private void UpdateNavigationHierarchy()
+    {
+        // Compact category icons navigate to the dashboard directly. Child flyouts
+        // otherwise consume the next category click as a light-dismiss action.
+        var index = 1; // Dashboard remains the first entry.
+        foreach (var (category, group) in categoryItems)
+        {
+            var item = navigation.IsPaneOpen ? group : compactCategoryItems[category];
+            if (!ReferenceEquals(navigation.MenuItems[index], item)) navigation.MenuItems[index] = item;
+            index++;
+        }
+        if (tabs.SelectedItem is TabViewItem { Tag: ToolWorkspace }) SyncNavigation();
+    }
+
     private void SyncNavigation()
     {
         if (tabs.SelectedItem is not TabViewItem tab)
             return;
         if (tab.Tag is ToolWorkspace workspace && toolItems.TryGetValue(workspace.ToolId, out var item))
-            navigation.SelectedItem = item;
+            navigation.SelectedItem = navigation.IsPaneOpen ? item : compactCategoryItems[vm.Tools.Get(workspace.ToolId).Category];
         else
             navigation.SelectedItem = tab == settingsTab ? navigation.SettingsItem : home;
     }

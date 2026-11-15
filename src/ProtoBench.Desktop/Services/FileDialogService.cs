@@ -12,10 +12,10 @@ public sealed class FileDialogService
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(Window));
         return (await picker.PickSingleFileAsync())?.Path;
     }
-    public async Task<string?> SaveAsync()
+    public async Task<string?> SaveAsync(string suggestedFileName = "synthetic-output", string extension = ".dat", string fileType = "Data file")
     {
-        var picker = new FileSavePicker { SuggestedFileName = "synthetic-output" };
-        picker.FileTypeChoices.Add("Data file", new List<string> { ".dat" });
+        var picker = new FileSavePicker { SuggestedFileName = suggestedFileName };
+        picker.FileTypeChoices.Add(fileType, new List<string> { extension });
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(Window));
         return (await picker.PickSaveFileAsync())?.Path;
     }
