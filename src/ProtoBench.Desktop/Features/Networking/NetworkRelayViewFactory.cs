@@ -170,11 +170,36 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         var textPane = new Grid { RowSpacing = 6 };
         textPane.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         textPane.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        var encoding = new ComboBox { Header = "Text encoding", ItemsSource = TextEncodings.Options, HorizontalAlignment = HorizontalAlignment.Stretch };
+        textPane.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var encoding = new ComboBox { ItemsSource = TextEncodings.Options, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(encoding, "Text encoding");
         encoding.SetBinding(ComboBox.SelectedItemProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.TextEncoding)), Mode = BindingMode.TwoWay });
-        textPane.Children.Add(encoding);
+        var telnet = Check(nameof(vm.TelnetPreview), "Telnet preview");
+        ToolTipService.SetToolTip(telnet, "Filter Telnet commands from text and show negotiation details below. Uses retained chunks from this connection and direction. Text controls are preserved; this is not a terminal emulator.");
+        var textOptions = new Grid { ColumnSpacing = 12, RowSpacing = 6 };
+        textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        textOptions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        textOptions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var encodingLabel = Ui.Text("Text encoding");
+        Grid.SetColumnSpan(encodingLabel, 2); textOptions.Children.Add(encodingLabel);
+        Grid.SetRow(encoding, 1); textOptions.Children.Add(encoding);
+        telnet.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetRow(telnet, 1); Grid.SetColumn(telnet, 1); textOptions.Children.Add(telnet);
+        textPane.Children.Add(textOptions);
         var textPreview = InspectPane(nameof(vm.SelectedText), "Text preview (invalid/split characters replaced)", "Copy text", () => vm.SelectedText);
         Grid.SetRow(textPreview, 1); textPane.Children.Add(textPreview);
+        var telnetCommands = Result(nameof(vm.SelectedTelnetCommands), "Commands completed in this entry / pending command");
+        telnetCommands.MinHeight = 70; telnetCommands.MaxHeight = 150;
+        var telnetDetails = new Expander
+        {
+            Header = "Telnet commands", Content = telnetCommands,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        void UpdateTelnetDetails() => telnetDetails.Visibility = vm.TelnetPreview ? Visibility.Visible : Visibility.Collapsed;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.TelnetPreview)) UpdateTelnetDetails(); };
+        UpdateTelnetDetails();
+        Grid.SetRow(telnetDetails, 2); textPane.Children.Add(telnetDetails);
         dataTabs.TabItems.Add(new TabViewItem { Header = "Text", IsClosable = false, Content = textPane });
         dataTabs.TabItems.Add(new TabViewItem { Header = "Details", IsClosable = false,
             Content = InspectPane(nameof(vm.SelectedInfo), "Connection / capture details", "Copy details", () => vm.SelectedInfo) });

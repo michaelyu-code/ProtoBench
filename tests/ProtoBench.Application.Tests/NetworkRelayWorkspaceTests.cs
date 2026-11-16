@@ -10,6 +10,34 @@ namespace ProtoBench.Application.Tests;
 public sealed class NetworkRelayWorkspaceTests
 {
     [Fact]
+    public void TelnetPreviewReplaysOnlySelectedConnectionAndDirectionAndPreservesRawBytes()
+    {
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
+        var now = DateTimeOffset.UtcNow;
+        var outbound = ProtoBench.Utilities.Networking.RelayDirection.ClientToServer;
+        var inbound = ProtoBench.Utilities.Networking.RelayDirection.ServerToClient;
+        workspace.Entries.Add(new(1, now, 1, outbound, "", new byte[] { 255, 251 }));
+        workspace.Entries.Add(new(2, now, 2, outbound, "", new byte[] { 255, 250, 24 }));
+        workspace.Entries.Add(new(3, now, 1, inbound, "", new byte[] { 255, 250, 24 }));
+        var entry = new ProtoBench.Utilities.Networking.RelayCaptureEntry(4, now, 1, outbound, "", new byte[] { 1, 99, 97, 102, 233, 255, 255 });
+        workspace.Entries.Add(entry);
+        workspace.Selected = entry;
+        workspace.TextEncoding = ProtoBench.Utilities.Text.TextEncodings.Options.Single(e => e.CodePage == 28591);
+        var raw = workspace.SelectedText;
+        Assert.False(workspace.TelnetPreview);
+        Assert.Empty(workspace.SelectedTelnetCommands);
+        workspace.TelnetPreview = true;
+        Assert.Equal("caféÿ", workspace.SelectedText);
+        Assert.Equal("IAC WILL ECHO (1)", workspace.SelectedTelnetCommands);
+        Assert.Equal("01636166E9FFFF", workspace.SelectedHex);
+        workspace.TextEncoding = ProtoBench.Utilities.Text.TextEncodings.Utf8;
+        Assert.Contains("�", workspace.SelectedText);
+        workspace.TextEncoding = ProtoBench.Utilities.Text.TextEncodings.Options.Single(e => e.CodePage == 28591);
+        workspace.TelnetPreview = false;
+        Assert.Equal(raw, workspace.SelectedText);
+    }
+
+    [Fact]
     public async Task ValidationIdentifiesEachRequiredFieldAndTlsCertificate()
     {
         using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter())

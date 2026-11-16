@@ -24,6 +24,16 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     private long lastSequence;
     private RelayCaptureEntry? selected;
     private bool autoScroll = true;
+    private bool telnetPreview;
+    public bool TelnetPreview
+    {
+        get => telnetPreview;
+        set
+        {
+            if (!SetProperty(ref telnetPreview, value)) return;
+            OnPropertyChanged(nameof(SelectedText)); OnPropertyChanged(nameof(SelectedTelnetCommands));
+        }
+    }
     private TextEncodingOption textEncoding = TextEncodings.Utf8;
     public bool AutoScroll { get => autoScroll; set => SetProperty(ref autoScroll, value); }
     public TextEncodingOption TextEncoding
@@ -100,10 +110,27 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         {
             SetProperty(ref selected, value);
             OnPropertyChanged(nameof(SelectedHex)); OnPropertyChanged(nameof(SelectedText)); OnPropertyChanged(nameof(SelectedInfo));
+            OnPropertyChanged(nameof(SelectedTelnetCommands));
         }
     }
     public string SelectedHex => Selected?.Hex ?? "";
-    public string SelectedText => Selected is null ? "" : TextEncoding.GetEncoding(strict: false).GetString(Selected.Data.Span);
+    public string SelectedText => Selected is null ? "" : TextEncoding.GetEncoding(strict: false).GetString(
+        TelnetPreview ? DecodeSelectedTelnet().Data : Selected.Data.Span);
+    public string SelectedTelnetCommands => !TelnetPreview || Selected is null ? "" : DecodeSelectedTelnet().Commands;
+    private TelnetPreviewResult DecodeSelectedTelnet()
+    {
+        if (Selected is null) return new([], "");
+        var decoder = new TelnetPreviewDecoder();
+        // TCP can split IAC commands anywhere. Replay only this stream's retained
+        // history, so other clients/directions cannot change its parsing state.
+        foreach (var entry in Entries)
+        {
+            if (entry.Sequence >= Selected.Sequence) break;
+            if (entry.ConnectionId == Selected.ConnectionId && entry.Direction == Selected.Direction)
+                decoder.Decode(entry.Data.Span, includeOutput: false);
+        }
+        return decoder.Decode(Selected.Data.Span);
+    }
     public string SelectedInfo => Selected is null ? "Select a capture entry to inspect it." : $"{Selected.Timestamp:O}\n{Selected.Summary}\n{Selected.Description}";
 
     public void CreateTestCertificate()
@@ -237,8 +264,13 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         if (disposed) return;
         var snapshot = capture.Snapshot();
         var first = snapshot.Entries.Count == 0 ? long.MaxValue : snapshot.Entries[0].Sequence;
-        while (Entries.Count > 0 && Entries[0].Sequence < first) Entries.RemoveAt(0);
+        var historyChanged = false;
+        while (Entries.Count > 0 && Entries[0].Sequence < first) { Entries.RemoveAt(0); historyChanged = true; }
         if (Selected is not null && !snapshot.Entries.Any(e => e.Sequence == Selected.Sequence)) Selected = null;
+        if (historyChanged && TelnetPreview && Selected is not null)
+        {
+            OnPropertyChanged(nameof(SelectedText)); OnPropertyChanged(nameof(SelectedTelnetCommands));
+        }
         foreach (var entry in snapshot.Entries.Where(e => e.Sequence > lastSequence))
         {
             Entries.Add(entry); lastSequence = entry.Sequence;
