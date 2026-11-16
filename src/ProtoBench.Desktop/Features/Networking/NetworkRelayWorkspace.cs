@@ -114,13 +114,13 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         }
     }
     public string SelectedHex => Selected?.Hex ?? "";
-    public string SelectedText => Selected is null ? "" : TextEncoding.GetEncoding(strict: false).GetString(
-        TelnetPreview ? DecodeSelectedTelnet().Data : Selected.Data.Span);
+    public string SelectedText => Selected is null ? "" : TelnetPreview ? DecodeSelectedTelnet().Text :
+        TextEncoding.GetEncoding(strict: false).GetString(Selected.Data.Span);
     public string SelectedTelnetCommands => !TelnetPreview || Selected is null ? "" : DecodeSelectedTelnet().Commands;
-    private TelnetPreviewResult DecodeSelectedTelnet()
+    private TelnetTextPreviewResult DecodeSelectedTelnet()
     {
-        if (Selected is null) return new([], "");
-        var decoder = new TelnetPreviewDecoder();
+        if (Selected is null) return new("", "");
+        var decoder = new TelnetTextPreviewDecoder(TextEncoding.GetEncoding(strict: false));
         // TCP can split IAC commands anywhere. Replay only this stream's retained
         // history, so other clients/directions cannot change its parsing state.
         foreach (var entry in Entries)

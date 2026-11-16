@@ -10,6 +10,25 @@ namespace ProtoBench.Application.Tests;
 public sealed class NetworkRelayWorkspaceTests
 {
     [Fact]
+    public void TelnetTextPreviewRemovesTerminalDataAndCopyValueMatchesVisibleText()
+    {
+        using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
+        var now = DateTimeOffset.UtcNow;
+        var direction = ProtoBench.Utilities.Networking.RelayDirection.ServerToClient;
+        workspace.Entries.Add(new(1, now, 1, direction, "", System.Text.Encoding.ASCII.GetBytes("Previous\u001B[3")));
+        var bytes = new byte[] { 255, 251, 1 }.Concat(System.Text.Encoding.ASCII.GetBytes("2mLogin:\u001B[0m\0\a\r\n")).ToArray();
+        var entry = new ProtoBench.Utilities.Networking.RelayCaptureEntry(2, now, 1, direction, "", bytes);
+        workspace.Entries.Add(entry); workspace.Selected = entry;
+        var rawText = workspace.SelectedText;
+        workspace.TelnetPreview = true;
+        Assert.Equal("Login:\r\n", workspace.SelectedText);
+        Assert.Equal("IAC WILL ECHO (1)", workspace.SelectedTelnetCommands);
+        Assert.Equal(Convert.ToHexString(bytes), workspace.SelectedHex);
+        workspace.TelnetPreview = false;
+        Assert.Equal(rawText, workspace.SelectedText);
+    }
+
+    [Fact]
     public void TelnetPreviewReplaysOnlySelectedConnectionAndDirectionAndPreservesRawBytes()
     {
         using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());

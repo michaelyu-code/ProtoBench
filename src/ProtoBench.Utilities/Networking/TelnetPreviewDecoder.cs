@@ -3,7 +3,8 @@ namespace ProtoBench.Utilities.Networking;
 public sealed record TelnetPreviewResult(byte[] Data, string Commands);
 
 /// <summary>Passive RFC 854 command decoding for one connection and direction.</summary>
-public sealed class TelnetPreviewDecoder
+public sealed class TelnetPreviewDecoder(Action<byte, byte>? negotiation = null,
+    Action<byte, ReadOnlyMemory<byte>>? subnegotiation = null)
 {
     private enum State { Data, Iac, Option, SubOption, SubData, SubIac }
     private State state;
@@ -13,9 +14,9 @@ public sealed class TelnetPreviewDecoder
     private const int MaxPayloadPreview = 64, MaxCommands = 256;
 
     // Replaying earlier chunks keeps command state without allocating their output.
-    public TelnetPreviewResult Decode(ReadOnlySpan<byte> bytes, bool includeOutput = true)
+    public TelnetPreviewResult Decode(ReadOnlySpan<byte> bytes, bool includeOutput = true, bool includeData = false)
     {
-        var data = includeOutput ? new List<byte>() : null;
+        var data = includeOutput || includeData ? new List<byte>() : null;
         var commands = includeOutput ? new List<string>() : null;
         var omitted = 0;
         void Report(string text)
@@ -49,6 +50,7 @@ public sealed class TelnetPreviewDecoder
                     else StartCommand(value);
                     break;
                 case State.Option:
+                    negotiation?.Invoke(command, value);
                     if (commands is not null) Report($"IAC {CommandName(command)} {OptionName(value)}");
                     state = State.Data;
                     break;
@@ -63,6 +65,8 @@ public sealed class TelnetPreviewDecoder
                     if (value == 255) { SubByte(255); state = State.SubData; }
                     else if (value == 240)
                     {
+                        if (subnegotiation is not null && subLength <= MaxPayloadPreview)
+                            subnegotiation(subOption, subData.ToArray());
                         if (commands is not null) Report($"IAC SB {OptionName(subOption)} · {subLength} payload bytes: {Convert.ToHexString(subData.ToArray())}" +
                             (subLength > MaxPayloadPreview ? "… (preview limited to 64 bytes)" : "") + " · IAC SE");
                         state = State.Data;

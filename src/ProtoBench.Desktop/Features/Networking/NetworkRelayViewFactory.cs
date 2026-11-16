@@ -175,7 +175,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(encoding, "Text encoding");
         encoding.SetBinding(ComboBox.SelectedItemProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.TextEncoding)), Mode = BindingMode.TwoWay });
         var telnet = Check(nameof(vm.TelnetPreview), "Telnet preview");
-        ToolTipService.SetToolTip(telnet, "Filter Telnet commands from text and show negotiation details below. Uses retained chunks from this connection and direction. Text controls are preserved; this is not a terminal emulator.");
+        ToolTipService.SetToolTip(telnet, "Show readable text by removing Telnet commands, ANSI/VT escape sequences and other control characters. Tabs and line breaks are kept. Uses the selected encoding and retained chunks from this connection and direction. Expand Telnet commands for negotiation details.");
         var textOptions = new Grid { ColumnSpacing = 12, RowSpacing = 6 };
         textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

@@ -19,6 +19,8 @@ Click **Start relay**, then configure your client to connect to `127.0.0.1:9000`
 
 ## TLS inspection without an existing certificate
 
+For a local test endpoint, see the separate **Test Telnet Server** utility below.
+
 1. Expand **Incoming TLS certificate** and enter the hostname or IP your client will use to connect to the relay. For local tests, use `localhost`; its generated SANs also include `127.0.0.1` and `::1`.
 2. Click **Create test certificate**. This selects incoming TLS (or preserves Auto mode) and creates a self-signed RSA-2048 server certificate valid for 30 days.
 3. Click **Export public test certificate…** and configure your test client to trust that certificate explicitly. Use its matching hostname/IP to connect. The export contains no private key. Clients with certificate pinning need a corresponding test configuration.
@@ -30,6 +32,35 @@ Alternatively, browse to an existing PFX/P12 with a server certificate and priva
 
 ## Capture behavior and lifecycle
 
+### Separate test Telnet server
+
+Open **Utilities → Test Telnet Server** in its own tab and click **Start server**. It defaults to `127.0.0.1:2323`; choose port `0` to let Windows assign a free port. The **Server endpoint** field shows the actual address and port, with a copy action. Listen settings are locked while the server is running. Connection activity is shown in the utility, with up to 200 recent entries and cumulative sent/received byte totals.
+
+To inspect its traffic through the relay:
+
+1. Start the test server and note its actual port.
+2. In a separate **TCP / TLS Relay** tab, use listen endpoint `127.0.0.1:9000` and upstream host `127.0.0.1` with the test server's port (normally `2323`). The relay and server need different listen ports.
+3. Set incoming and upstream connections to **Plain TCP**, then start the relay. The test server sends its greeting first; incoming Auto mode waits for client data before connecting upstream.
+4. Connect a Telnet client to `127.0.0.1:9000`. Select a captured entry and enable **Telnet preview** on its Text tab to view cleaned ASCII text. If binding the server to a wildcard IP, use a concrete address such as `127.0.0.1` or `::1` for the relay's upstream host.
+
+Select a **Server profile** before starting:
+
+| Profile | Test session |
+| --- | --- |
+| ASCII Telnet | Commands `help`, `echo <text>`, `ansi`, `time`, `quit`; other lines are echoed back. **Include ANSI sample in greeting** starts enabled and can be unchecked. |
+| ANSI / VT100 | The same line commands, with ANSI color and OSC title samples always included in the greeting. |
+| Telserv / TN6530 (conversational simulation) | A NonStop-style service menu with simulated TACL and echo services, terminal-type negotiation, and 6530 clear/home/unlock screen samples. |
+
+All profiles use plain TCP and require no login. The ASCII and ANSI profiles announce suppress-go-ahead and leave character echo to the client. The TN6530 profile offers BINARY, ECHO and SUPPRESS-GO-AHEAD, and requests BINARY, SUPPRESS-GO-AHEAD and TERMINAL-TYPE. After the client accepts TERMINAL-TYPE, the server sends TERMINAL-TYPE SEND and reads its IS response according to [RFC 1091](https://www.rfc-editor.org/rfc/rfc1091.txt). It recognizes `TN6530`, `TN653X`, `6530`, `653X` and `TN6530-8`. Other terminal types, or clients declining terminal type, receive a text-only conversational menu. Negotiation has a 30-second deadline. Unsupported options are declined.
+
+At the simulated Telserv menu, choose `TACL`, `ECHO` or `EXIT`. TACL offers `HELP`, `STATUS`, `TIME`, `VOLUME`, `FILES`, `ECHO <text>`, `SCREEN` and `LOGOFF`. The volume and files are synthetic examples; commands do not execute programs or access host files. `SCREEN` sends a 6530 conversational sample using Esc I (clear), Esc H (home) and Esc b (unlock), as specified in the [6530 Programmer's Guide](https://orion.squeakysand.uk/3270/c02118581.pdf). `LOGOFF` returns to the service menu; `EXIT` there disconnects. The echo service repeats input and accepts `LOGOFF` to return to the menu. Echo is sent by the TN6530 server when the client accepts its ECHO offer.
+
+This is an ASCII conversational simulator for testing clients and relay traffic. It is not an HPE Telserv installation or a TACL interpreter. Block-mode forms, function-key/application protocols, full terminal emulation, TLS and authentication are not implemented. The relay's cleaned text preview handles the clear/home/unlock sequences used by these samples; Hex and capture exports retain their exact bytes.
+
+Up to 8 clients can connect independently. Lines are capped at 1,024 characters; an overlong line closes that session. CR/LF, CR/NUL and LF line endings are accepted, with basic backspace/delete editing. Clients idle for 5 minutes are disconnected. **Stop server** or closing its tab releases its listener and client connections. The server runs independently of the relay and remains active while its tab is open, including when another utility is selected. Activity is kept in memory only and is bounded to 1,024 entries / 4 MiB. **Clear activity** clears retained entries while byte totals remain cumulative for the run.
+
+### Relay traffic
+
 The workspace fits its traffic list and selected-entry inspector into the available window height. They appear side by side when space permits and stack within the available height on narrower windows. Hex, Text and Details tabs have their own scrolling viewers. Connection settings remain above the traffic area in a collapsible panel with independent scrolling; short windows and starting the relay collapse it to give traffic more space. Reopen **Connection details** when you need to edit configuration. The **Test cert…** toolbar action exports the public generated certificate even while the relay is running.
 
 Clicking **Start relay** with missing or invalid required settings opens the connection panel and shows field-specific tooltip prompts. Plain TCP needs a listen IP/port and an upstream host/port. Incoming TLS also needs a generated test certificate or a PFX/P12; Auto can generate its certificate using the test certificate name.
@@ -40,7 +71,9 @@ The relay records bytes when received, before forwarding. If a write fails, the 
 
 Enable **Telnet preview** on the **Text** tab to remove Telnet commands from the displayed text and unescape `IAC IAC` to a literal `FF` data byte before applying the selected encoding. Expand **Telnet commands** to see WILL/WONT/DO/DONT with option names, standalone commands, and SB/SE subnegotiation payloads as hex. Command parsing follows [RFC 854](https://www.rfc-editor.org/rfc/rfc854.txt) and [RFC 855](https://www.rfc-editor.org/rfc/rfc855.txt), with common option names from the [IANA registry](https://www.iana.org/assignments/telnet-options/).
 
-The preview reconstructs command state from earlier retained chunks for the selected connection and direction, so split commands do not leak into its text. Incomplete or malformed commands are identified. Evicted or cleared history can leave the initial command state incomplete. Each entry still has its own text decoding; split multibyte characters can be replaced. Subnegotiation payload previews are capped at 64 bytes and command output at 256 commands per entry, with notices when shortened. **Copy text** copies the filtered text when Telnet preview is enabled. Text controls, including CR/LF, NUL and terminal escape sequences, are preserved; this is a passive protocol preview, with no terminal screen emulation, option negotiation, or automatic character-set switching. Forwarded bytes, Hex and exported capture bytes stay exact.
+The preview reconstructs command, text encoding and terminal escape state from earlier retained chunks for the selected connection and direction. Telnet commands, ANSI/VT escape sequences (including color, cursor, title and control-string sequences), and nonprinting controls such as NUL and BEL are removed from the text preview. Tabs and CR/LF line breaks are preserved. Terminal sequence syntax follows the [xterm control sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html). Escape sequences and multibyte characters split across entries are continued in the next entry; a character appears in the entry that completes it. Invalid encoded characters are replaced. With Telnet preview off, the original per-entry text preview remains available.
+
+Incomplete or malformed Telnet commands are identified. Evicted or cleared history can leave the initial decoding state incomplete. Subnegotiation payload previews are capped at 64 bytes and command output at 256 commands per entry, with notices when shortened. **Copy text** copies the cleaned text when Telnet preview is enabled. This is a passive plain-text preview: cursor movement, screen clearing and other terminal operations are stripped without applying screen updates. It does not negotiate options or switch character sets automatically. Forwarded bytes, Hex and exported capture bytes stay exact.
 
 The capture ring retains at most 1,024 entries and 4 MiB of data. Old entries are evicted, with an eviction count; forwarding continues. **Clear capture** clears retained rows without interrupting connections, and byte totals remain cumulative for the current run. **Export capture…** writes a snapshot of retained events as JSON Lines, including direction, connection ID, UTC timestamp, byte count and exact hex. Its header includes byte totals and eviction count. Starting a new run resets the capture.
 
