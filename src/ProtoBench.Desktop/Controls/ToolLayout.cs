@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using ProtoBench.Application.Workspaces;
 
 namespace ProtoBench.Desktop.Controls;
@@ -40,17 +41,21 @@ public sealed class AdaptiveColumns : Grid
         }
         for (var i = 0; i < visible.Length; i++) { SetColumn(visible[i], i % count); SetRow(visible[i], i / count); }
     }
+    public void RefreshLayout() => Reflow();
 }
 
 public static class ToolLayout
 {
+    private sealed class WorkspaceGrid : Grid;
+    private sealed class ResultCard : Grid;
+
     /// <summary>Preserves the same editors while switching narrow workspaces between input and output.</summary>
     public static FrameworkElement Workspace(ToolWorkspace source, FrameworkElement input, FrameworkElement output,
-        Func<bool> hasResult, string resultProperty = "Output")
+        Func<bool> hasResult, string resultProperty = "Output", double resultColumnWeight = 1)
     {
-        var host = new Grid { ColumnSpacing = 12, RowSpacing = 8 };
+        var host = new WorkspaceGrid { ColumnSpacing = 12, RowSpacing = 8 };
         host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         host.ColumnDefinitions.Add(new ColumnDefinition());
         host.ColumnDefinitions.Add(new ColumnDefinition());
@@ -60,18 +65,20 @@ public static class ToolLayout
         var resultStatus = new ContentControl { Content = Ui.BoundText(source, nameof(source.Status)), HorizontalContentAlignment = HorizontalAlignment.Stretch };
         Grid.SetRow(resultStatus, 2); Grid.SetColumnSpan(resultStatus, 2);
         Grid.SetColumnSpan(navigation, 2);
-        host.Children.Add(navigation); host.Children.Add(input); host.Children.Add(output);
+        var inputScroll = Scroll(input);
+        FrameworkElement outputScroll = output is ResultCard ? output : Scroll(output);
+        host.Children.Add(navigation); host.Children.Add(inputScroll); host.Children.Add(outputScroll);
         host.Children.Add(resultStatus);
-        Grid.SetRow(input, 1); Grid.SetRow(output, 1);
+        Grid.SetRow(inputScroll, 1); Grid.SetRow(outputScroll, 1);
         bool results = false, narrow = false, pending = false;
         void Refresh()
         {
             narrow = host.ActualWidth < 692;
             navigation.Visibility = narrow ? Visibility.Visible : Visibility.Collapsed;
-            host.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-            Grid.SetColumn(output, narrow ? 0 : 1);
-            input.Visibility = !narrow || !results ? Visibility.Visible : Visibility.Collapsed;
-            output.Visibility = !narrow || results ? Visibility.Visible : Visibility.Collapsed;
+            host.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(resultColumnWeight, GridUnitType.Star);
+            Grid.SetColumn(outputScroll, narrow ? 0 : 1);
+            inputScroll.Visibility = !narrow || !results ? Visibility.Visible : Visibility.Collapsed;
+            outputScroll.Visibility = !narrow || results ? Visibility.Visible : Visibility.Collapsed;
             resultStatus.Visibility = narrow && results ? Visibility.Visible : Visibility.Collapsed;
             edit.IsChecked = !results; inspect.IsChecked = results;
         }
@@ -125,23 +132,99 @@ public static class ToolLayout
     }
     public static Expander Help(FrameworkElement text) => new()
     {
-        Header = "Help & examples", Content = text, IsExpanded = false,
+        Header = "Help & examples", Content = Scroll(text), IsExpanded = false,
         HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
     };
-    public static ScrollViewer Page(string title, string subtitle, params UIElement[] children)
+
+    /// <summary>A bounded result editor that uses the available pane height.</summary>
+    public static FrameworkElement TextResult(string title, RawTextViewer viewer, Button copy, TextBlock feedback)
     {
-        var panel = Stack(Ui.Heading(title), Ui.Text(subtitle));
-        panel.Margin = new Thickness(20);
-        panel.Spacing = 12;
-        foreach (var child in children) panel.Children.Add(child);
-        var page = new ScrollViewer { Content = panel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        viewer.Header = null;
+        viewer.CompactViewport = false;
+        viewer.MinHeight = 0;
+        viewer.MaxHeight = double.PositiveInfinity;
+        viewer.VerticalAlignment = VerticalAlignment.Stretch;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(viewer, title);
+        var header = new Grid { ColumnSpacing = 10 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = Ui.Text(title, 18);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        header.Children.Add(label);
+        Grid.SetColumn(copy, 1); header.Children.Add(copy);
+        var layout = new Grid { RowSpacing = 10 };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.Children.Add(header);
+        Grid.SetRow(viewer, 1); layout.Children.Add(viewer);
+        Grid.SetRow(feedback, 2); layout.Children.Add(feedback);
+        var style = (Border)Section("");
+        style.Child = layout;
+        var card = new ResultCard();
+        card.Children.Add(style);
+        return card;
+    }
+
+    /// <summary>Fits a grid to its pane, with an outer scroll only below its minimum usable height.</summary>
+    public static FrameworkElement FittedSection(string title, Grid content)
+    {
+        var scroll = Scroll(content);
+        void Resize() => content.Height = Math.Max(content.MinHeight, scroll.ActualHeight);
+        scroll.SizeChanged += (_, _) => Resize();
+        content.RegisterPropertyChangedCallback(FrameworkElement.MinHeightProperty, (_, _) => Resize());
+        var layout = new Grid { RowSpacing = 10 };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        layout.Children.Add(Ui.Text(title, 18));
+        Grid.SetRow(scroll, 1); layout.Children.Add(scroll);
+        var border = (Border)Section("");
+        border.Child = layout;
+        var card = new ResultCard();
+        card.Children.Add(border);
+        return card;
+    }
+    private static ScrollViewer Scroll(UIElement content) => new()
+    {
+        Content = content, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        VerticalContentAlignment = VerticalAlignment.Stretch
+    };
+
+    public static Grid Page(string title, string subtitle, params UIElement[] children)
+    {
+        var page = new Grid { Margin = new Thickness(12), RowSpacing = 8 };
+        var heading = Ui.Heading(title);
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.Children.Add(heading);
+        var description = Ui.Text(subtitle);
+        Grid.SetRow(description, 1); page.Children.Add(description);
+        for (var i = 0; i < children.Length; i++)
+        {
+            page.RowDefinitions.Add(new RowDefinition { Height = i == 0 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+            var child = i == 0 && children[i] is not WorkspaceGrid ? Scroll(children[i]) : children[i];
+            if (child is FrameworkElement element) Grid.SetRow(element, i + 2);
+            page.Children.Add(child);
+        }
         page.SizeChanged += (_, _) =>
         {
             var compact = page.ActualWidth < 720 || page.ActualHeight < 640;
-            panel.Margin = new Thickness(compact ? 12 : 20);
-            panel.Spacing = compact ? 8 : 12;
-            ((TextBlock)panel.Children[0]).FontSize = compact ? 22 : 28;
+            page.RowSpacing = compact ? 8 : 12;
+            heading.FontSize = compact ? 22 : 28;
+            foreach (var help in children.OfType<Expander>())
+                if (help.Content is FrameworkElement content) content.MaxHeight = Math.Max(60, page.ActualHeight * .25);
+        };
+        page.Loaded += (_, _) =>
+        {
+            for (DependencyObject? parent = VisualTreeHelper.GetParent(page); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            {
+                if (parent is not ContentPresenter { Name: "TabContentPresenter" } presenter) continue;
+                presenter.VerticalContentAlignment = VerticalAlignment.Stretch;
+                presenter.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                break;
+            }
         };
         return page;
     }

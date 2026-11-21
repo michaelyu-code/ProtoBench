@@ -95,22 +95,67 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
         }
         else if (vm is ArqcWorkspace) textResults.Children.Add(ResultValues.Create(vm, () => vm.Output, "ARQC", "Verification"));
         else textResults.Children.Add(output);
-        textResults.Children.Add(Ui.Button("Copy result", () =>
+        var copyResult = Ui.Button("Copy result", () =>
         {
             if (vm.Output.Length == 0) return;
             try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; }
             catch { copyStatus.Text = "Clipboard unavailable. Select and copy the result manually."; }
-        }));
+        });
+        textResults.Children.Add(copyResult);
         textResults.Children.Add(copyStatus);
+        FrameworkElement? emvResults = null;
         if (vm is EmvWorkspace emv)
         {
-            results.Children.Add(Ui.BoundText(emv, nameof(emv.ProfileCaption)));
-            results.Children.Add(Ui.BoundText(emv, nameof(emv.FieldSummary)));
-            results.Children.Add(new EmvBitEditor(emv));
-            var details = new Expander { Header = "Decoded text", Content = textResults, IsExpanded = !emv.IsBitMode,
-                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-            vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.InputLabel)) details.IsExpanded = !emv.IsBitMode; };
-            results.Children.Add(details);
+            var summary = Ui.BoundText(emv, nameof(emv.FieldSummary));
+            var bits = new EmvBitEditor(emv);
+            textResults.Children.Clear();
+            output.Header = null;
+            output.CompactViewport = false;
+            output.MinHeight = 0;
+            output.MaxHeight = double.PositiveInfinity;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(output, "Decoded text");
+            var decoded = new Grid { RowSpacing = 8 };
+            decoded.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            decoded.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            decoded.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            decoded.Children.Add(output);
+            Grid.SetRow(copyResult, 1); decoded.Children.Add(copyResult);
+            Grid.SetRow(copyStatus, 2); decoded.Children.Add(copyStatus);
+            var details = new Expander { Header = "Decoded text", Content = decoded, IsExpanded = !emv.IsBitMode,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+            var layout = new Grid { RowSpacing = 8 };
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.Children.Add(summary);
+            Grid.SetRow(bits, 1); layout.Children.Add(bits);
+            Grid.SetRow(details, 2); layout.Children.Add(details);
+            void ResizeDecoded()
+            {
+                // A collapsed bit editor retains its previous ActualHeight.
+                // Remove its row and exclude that stale height for rule/TLV tags.
+                var showBits = emv.IsBitMode;
+                layout.RowDefinitions[1].Height = showBits ? GridLength.Auto : new GridLength(0);
+                layout.RowDefinitions[2].Height = details.IsExpanded ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+                // Keep a usable text viewport on short windows; larger windows
+                // give the remaining height to the editor's own scroll viewer.
+                layout.MinHeight = (summary.Visibility == Visibility.Visible ? summary.ActualHeight : 0)
+                    + (showBits ? bits.ActualHeight : 0) + Math.Max(48, details.MinHeight) + 16
+                    + (details.IsExpanded ? 160 + details.Padding.Top + details.Padding.Bottom : 0);
+            }
+            details.Expanding += (_, _) => ResizeDecoded();
+            details.Collapsed += (_, _) => ResizeDecoded();
+            bits.SizeChanged += (_, _) => ResizeDecoded();
+            summary.SizeChanged += (_, _) => ResizeDecoded();
+            ResizeDecoded();
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(vm.InputLabel)) return;
+                details.IsExpanded = !emv.IsBitMode;
+                ResizeDecoded();
+            };
+            emvResults = ToolLayout.FittedSection("Results", layout);
         }
         else results.Children.Add(textResults);
         if (vm is EmvWorkspace tagWorkspace)
@@ -127,14 +172,22 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             inputs.Children.Insert(0, tagOptions);
             inputs.Children.Insert(1, input);
             return ToolLayout.Page(vm.Title, "Decode tag values and edit individual bits.",
-                ToolLayout.Section("", inputs), ToolLayout.Section("", results),
+                ToolLayout.Workspace(vm, ToolLayout.Section("Inputs", inputs), emvResults!, () => vm.Output.Length > 0,
+                    resultColumnWeight: 1.6),
                 ToolLayout.Help(Ui.BoundText(vm, nameof(vm.Help))));
         }
         var inputSection = ToolLayout.Section("Inputs", inputs);
-        var resultSection = ToolLayout.Section("Results", results);
+        FrameworkElement resultSection;
+        if (vm is LuhnWorkspace)
+        {
+            textResults.Children.Remove(output);
+            textResults.Children.Remove(copyResult);
+            textResults.Children.Remove(copyStatus);
+            resultSection = ToolLayout.TextResult("Results", output, copyResult, copyStatus);
+        }
+        else resultSection = ToolLayout.Section("Results", results);
         return ToolLayout.Page(vm.Title, "Local payment card calculations and decoding.",
-            vm is LuhnWorkspace ? ToolLayout.Stack(inputSection, resultSection)
-                : ToolLayout.Workspace(vm, inputSection, resultSection, () => vm.Output.Length > 0),
+            ToolLayout.Workspace(vm, inputSection, resultSection, () => vm.Output.Length > 0),
             ToolLayout.Help(Ui.BoundText(vm, nameof(vm.Help))));
     }
 }

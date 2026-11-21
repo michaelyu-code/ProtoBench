@@ -19,7 +19,9 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
             combo.SelectionChanged += (_, _) => { if (combo.SelectedItem is int value) change(value); };
             return combo;
         }
-        var result = new RawTextViewer { Header = "Result", MinHeight = 180, MaxHeight = 360, TextWrapping = TextWrapping.Wrap };
+        var result = new RawTextViewer { CompactViewport = false, MinHeight = 180, MaxHeight = double.PositiveInfinity,
+            VerticalAlignment = VerticalAlignment.Stretch, TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(result, "Conversion result");
         result.SetBinding(TextBox.TextProperty, new Microsoft.UI.Xaml.Data.Binding { Source = vm, Path = new PropertyPath("Output"), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         var copyStatus = Ui.Text("");
         var removeSpaces = new CheckBox { Content = "Remove spaces from input" };
@@ -65,13 +67,13 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         mode.SelectionChanged += (_, _) => { vm.Mode = (ConversionMode)mode.SelectedIndex; UpdateMode(); };
         vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(vm.Output)) copyStatus.Text = ""; };
         UpdateMode();
+        var inputs = ToolLayout.Section("Inputs", mode, numericOptions, encoding, input, removeSpaces,
+            Ui.Primary(new Button { Content = "Convert", Command = vm.ConvertCommand }), Ui.BoundText(vm, "Error"),
+            Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, "Status")));
+        var copy = Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } });
+        var results = ToolLayout.TextResult("Results", result, copy, copyStatus);
         return ToolLayout.Page("Base Converter", "Numeric bases, text encodings and EBCDIC CP500.",
-            ToolLayout.Workspace(vm,
-                ToolLayout.Section("Inputs", mode, numericOptions, encoding, input, removeSpaces,
-                    Ui.Primary(new Button { Content = "Convert", Command = vm.ConvertCommand }), Ui.BoundText(vm, "Error"),
-                    Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, "Status"))),
-                ToolLayout.Section("Results", result,
-                    Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } }), copyStatus), () => vm.Output.Length > 0),
+            ToolLayout.Workspace(vm, inputs, results, () => vm.Output.Length > 0),
             ToolLayout.Help(help));
     }
 }

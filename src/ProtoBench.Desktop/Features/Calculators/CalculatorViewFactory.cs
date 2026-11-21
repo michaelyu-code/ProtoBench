@@ -91,12 +91,13 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             ? ResultValues.Create(vm, () => vm.Output, "Hex", "Decimal", "Binary") : output);
         var copied = Ui.Text("");
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Output)) copied.Text = ""; };
-        results.Children.Add(Ui.Button("Copy result", () =>
+        var copyResult = Ui.Button("Copy result", () =>
         {
             if (vm.Output.Length == 0) return;
             try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copied.Text = "Copied"; }
             catch { copied.Text = "Clipboard unavailable. Select and copy the result manually."; }
-        }));
+        });
+        results.Children.Add(copyResult);
         results.Children.Add(copied);
         var subtitle = vm.Kind switch
         {
@@ -104,8 +105,15 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             CalculatorKind.Base64 => "Encode or decode text and binary data.",
             _ => "Encrypt, decrypt and check keys locally."
         };
+        FrameworkElement resultSection;
+        if (vm.Kind != CalculatorKind.Bitwise)
+        {
+            results.Children.Clear();
+            resultSection = ToolLayout.TextResult("Results", output, copyResult, copied);
+        }
+        else resultSection = ToolLayout.Section("Results", results);
         return ToolLayout.Page(vm.Title, subtitle,
-            ToolLayout.Workspace(vm, ToolLayout.Section("Inputs", inputs), ToolLayout.Section("Results", results), () => vm.Output.Length > 0),
+            ToolLayout.Workspace(vm, ToolLayout.Section("Inputs", inputs), resultSection, () => vm.Output.Length > 0),
             ToolLayout.Help(Ui.Text(vm.Help)));
     }
 }
