@@ -25,7 +25,7 @@
   </ResourceDictionary>
  </UserControl.Resources>
  <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled">
-  <StackPanel Margin="20" Spacing="12">
+  <StackPanel x:Name="PageContent" Margin="20" Spacing="12">
    <TextBlock Text="Log Parser" FontSize="28" FontWeight="SemiBold" />
    <TextBlock Text="Open a log file or paste log text to inspect its records." TextWrapping="Wrap" />
    <Expander x:Name="InputPanel" Header="Log input" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -37,26 +37,26 @@
       <TextBox x:Name="PasteInput" Header="Log text" PlaceholderText="Paste or type log text here…" AcceptsReturn="True" TextWrapping="NoWrap" Height="180" FontFamily="Cascadia Mono" />
       <TextBlock Text="Paste or type log text, then choose Parse text. Very large pastes are kept ready for parsing without filling the editor." TextWrapping="Wrap" FontSize="12" />
       <TextBlock x:Name="PasteNotice" TextWrapping="Wrap" FontSize="12" />
-      <StackPanel Orientation="Horizontal" Spacing="12">
+      <controls:ActionRow>
        <Button x:Name="ParseTextButton" Content="Parse text" />
        <Button x:Name="ClearTextButton" Content="Clear text" />
-      </StackPanel>
+      </controls:ActionRow>
      </StackPanel>
     </TabViewItem>
     <TabViewItem Header="Open file" IsClosable="False">
      <StackPanel Spacing="8" Padding="0,8,0,0">
       <TextBox x:Name="PathInput" Header="Local file path" PlaceholderText="Paste a path, or use Open file…" />
-      <StackPanel Orientation="Horizontal" Spacing="12">
+      <controls:ActionRow>
        <Button x:Name="OpenButton" Content="Open file…" />
        <Button x:Name="ParsePathButton" Content="Parse path" />
-      </StackPanel>
+      </controls:ActionRow>
      </StackPanel>
     </TabViewItem>
    </TabView>
-   <StackPanel Orientation="Horizontal" Spacing="12">
+   <controls:ActionRow>
     <Button x:Name="CancelButton" Content="Cancel" />
     <ProgressRing x:Name="Progress" Width="24" Height="24" IsActive="False" />
-   </StackPanel>
+   </controls:ActionRow>
    <Expander Header="Input details" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <TextBlock x:Name="FilePath" TextWrapping="Wrap" />
    </Expander>
@@ -67,7 +67,7 @@
     <TextBox x:Name="SearchInput" Header="Search value" PlaceholderText="Value or text…" />
     <TextBox x:Name="SearchField" Header="Field (optional)" PlaceholderText="DE number, label or name" />
    </controls:AdaptiveColumns>
-   <Expander Header="Filters and sort" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+   <Expander x:Name="FilterOptions" Header="Filters and sort" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <StackPanel Spacing="8">
      <controls:AdaptiveColumns MinimumColumnWidth="160">
     <ComboBox x:Name="DirectionPicker" Header="Direction" HorizontalAlignment="Stretch" />
@@ -83,13 +83,13 @@
     <TextBlock x:Name="RecordCount" Text="No input parsed" TextWrapping="Wrap" VerticalAlignment="Center" />
     <ComboBox x:Name="ResultsViewPicker" Grid.Column="1" Width="150" AutomationProperties.Name="Results view" ToolTipService.ToolTip="Switch between message cards and a field table" />
    </Grid>
-   <controls:AdaptiveColumns MinimumColumnWidth="220" MaximumColumns="3">
+   <controls:AdaptiveColumns MinimumColumnWidth="160" MaximumColumns="3">
     <ComboBox x:Name="PageSizePicker" Header="Messages per page" HorizontalAlignment="Stretch" />
     <NumberBox x:Name="PageNumber" Header="Page" Minimum="1" Value="1" SpinButtonPlacementMode="Compact" />
-    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+    <controls:ActionRow VerticalAlignment="Bottom">
      <Button x:Name="PreviousPage" Content="Previous page" IsEnabled="False" />
      <Button x:Name="NextPage" Content="Next page" IsEnabled="False" />
-    </StackPanel>
+    </controls:ActionRow>
    </controls:AdaptiveColumns>
    <Grid x:Name="BrowseLayout" ColumnSpacing="12" RowSpacing="12">
     <Grid.ColumnDefinitions><ColumnDefinition Width="240" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -99,7 +99,7 @@
       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
       <TextBlock Text="Messages" FontSize="{Binding HeadingFontSize, Source={StaticResource ResultPresentation}}" FontWeight="SemiBold" />
       <TextBlock Grid.Row="1" Text="Select a message · ↑ / ↓ to browse" FontSize="{Binding SmallFontSize, Source={StaticResource ResultPresentation}}" Opacity="0.75" />
-      <ListView Grid.Row="2" x:Name="Records" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" MinHeight="0" SelectionMode="Single" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListView Grid.Row="2" x:Name="Records" IsItemClickEnabled="True" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" MinHeight="0" SelectionMode="Single" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
        <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,2" /></Style></ListView.ItemContainerStyle>
        <ListView.ItemTemplate>
         <DataTemplate>
@@ -127,6 +127,7 @@
     </Border>
     <Border x:Name="InspectorPanel" Grid.Column="1" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" VerticalAlignment="Stretch">
      <StackPanel Spacing="{Binding PanelGap, Source={StaticResource ResultPresentation}}">
+      <Button x:Name="BackToMessages" Content="← Messages" Visibility="Collapsed" />
       <Grid ColumnSpacing="8">
        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
        <TextBlock x:Name="SelectedTitle" Text="Select a message" FontSize="{Binding HeadingFontSize, Source={StaticResource ResultPresentation}}" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -195,7 +196,7 @@
              <Button FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="CloseFieldDetail" Grid.Column="1" Content="×" ToolTipService.ToolTip="Close field details" AutomationProperties.Name="Close field details" Padding="8,2" />
             </Grid>
             <TextBox Grid.Row="1" FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="FieldValue" Header="Complete value" MaxHeight="120" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Cascadia Mono" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6"><Button FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="CopyValue" Content="Copy" IsEnabled="False" /><Button FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="ViewSource" Content="View source" IsEnabled="False" /></StackPanel>
+            <controls:ActionRow Grid.Row="2"><Button FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="CopyValue" Content="Copy" IsEnabled="False" /><Button FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="ViewSource" Content="View source" IsEnabled="False" /></controls:ActionRow>
             <TabView Grid.Row="3" FontSize="{Binding BodyFontSize, Source={StaticResource ResultPresentation}}" x:Name="FieldDetailTabs" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" TabWidthMode="SizeToContent" SelectedIndex="0">
              <TabViewItem Header="Decoded" IsClosable="False">
               <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled" AutomationProperties.Name="Decoded content">
@@ -275,11 +276,11 @@
     </Border>
    </Grid>
    <Border x:Name="TableHost" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" />
-   <StackPanel x:Name="PagingFooter" Orientation="Horizontal" Spacing="8">
+   <controls:ActionRow x:Name="PagingFooter">
     <Button x:Name="PreviousPageBottom" Content="Previous page" IsEnabled="False" />
     <Button x:Name="NextPageBottom" Content="Next page" IsEnabled="False" />
     <TextBlock x:Name="PageCaptionBottom" VerticalAlignment="Center" />
-   </StackPanel>
+   </controls:ActionRow>
    </StackPanel>
    <Expander x:Name="DiagnosticsPanel" Header="Parsing diagnostics" IsExpanded="False" Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <ScrollViewer MaxHeight="300" VerticalScrollMode="Auto" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Parsing diagnostic details">

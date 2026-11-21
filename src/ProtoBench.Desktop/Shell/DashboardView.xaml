@@ -3,9 +3,9 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
  <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
                VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
-  <StackPanel Margin="24" Spacing="20" HorizontalAlignment="Stretch">
+  <StackPanel x:Name="PageContent" Margin="24" Spacing="20" HorizontalAlignment="Stretch">
    <StackPanel Spacing="4">
-    <TextBlock Text="Dashboard" FontSize="28" FontWeight="SemiBold" />
+    <TextBlock x:Name="DashboardTitle" Text="Dashboard" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
     <TextBlock Text="Choose a tool to get started. Your open work stays in the tabs above." TextWrapping="Wrap"
                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
    </StackPanel>

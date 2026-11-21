@@ -12,6 +12,8 @@ using ProtoBench.Desktop.Features.Payments;
 using ProtoBench.Desktop.Features.Calculators;
 using ProtoBench.Desktop.Features.Certificates;
 using ProtoBench.Desktop.Features.Networking;
+using ProtoBench.Desktop.Features.Keyboard;
+using ProtoBench.Application.Services;
 using ProtoBench.Desktop.Features.Plugins;
 using ProtoBench.Infrastructure.Plugins;
 using ProtoBench.Desktop.Shell;
@@ -98,6 +100,10 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddTransient(sp => new TestTelnetServerWorkspace(sp.GetRequiredService<PluginCatalog>().Plugins.SelectMany(p => p.TelnetServers)));
         collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TestTelnetServerWorkspace>("test-telnet-server", sp));
         collection.AddSingleton<IWorkspaceViewFactory, TestTelnetServerViewFactory>();
+        collection.AddSingleton(new ToolDescriptor("timed-key-presser", "Timed Key Presser", "Press a selected keyboard key at a timed interval, with Start/Stop and a timestamped activity log.", ToolCategory.Utilities, "\uE765"));
+        collection.AddSingleton<IKeyboardInput, WindowsKeyboardInput>();
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TimedKeyPressWorkspace>("timed-key-presser", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, TimedKeyPressViewFactory>();
         var packages = new PluginPackageManager(Path.Combine(AppPaths.UserDirectory, "plugins"));
         var plugins = PluginCatalog.Load(packages,
             collection.Where(s => s.ServiceType == typeof(ToolDescriptor)).Select(s => ((ToolDescriptor)s.ImplementationInstance!).Id),

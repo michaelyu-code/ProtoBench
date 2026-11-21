@@ -23,6 +23,11 @@ public sealed class EmvBitEditor : StackPanel
     private readonly List<(EmvBit Bit, CheckBox Check)> checks = [];
     private readonly List<TextBlock> byteValues = [];
     private readonly List<(TextBlock Label, Border Indicator)> tabHeaders = [];
+    private readonly ComboBox bytePicker = new() { Header = "Byte", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly Grid byteBody = new();
+    private readonly List<FrameworkElement> byteContents = [];
+    private bool? compact;
+    private int compactIndex = -1;
     private string displayedProfile = "";
     private bool refreshing;
 
@@ -51,9 +56,12 @@ public sealed class EmvBitEditor : StackPanel
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="8" />
             """);
-        frame.Child = byteTabs;
+        bytePicker.Visibility = Visibility.Collapsed;
+        frame.Child = ToolLayout.Stack(byteTabs, bytePicker, byteBody);
         Children.Add(frame);
-        byteTabs.SelectionChanged += (_, _) => UpdateSelectedTab();
+        byteTabs.SelectionChanged += (_, _) => { UpdateSelectedTab(); ArrangeBytes(); };
+        bytePicker.SelectionChanged += (_, _) => { if (bytePicker.SelectedIndex >= 0) byteTabs.SelectedIndex = bytePicker.SelectedIndex; };
+        SizeChanged += (_, _) => ArrangeBytes();
         workspace.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(workspace.Bits)) Refresh();
@@ -63,6 +71,19 @@ public sealed class EmvBitEditor : StackPanel
 
     private string CurrentHex() => string.Concat(workspace.Bits.GroupBy(b => b.Byte)
         .Select(g => g.Where(b => b.IsSet).Sum(b => 1 << (b.Bit - 1)).ToString("X2")));
+
+    private void ArrangeBytes()
+    {
+        var narrow = ActualWidth < 560;
+        var index = byteTabs.SelectedIndex;
+        if (index < 0 || index >= byteContents.Count || (compact == narrow && compactIndex == index)) return;
+        compact = narrow; compactIndex = index;
+        // Editors stay in one visual parent across resizing and byte selection.
+        for (var i = 0; i < byteContents.Count; i++) byteContents[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+        bytePicker.SelectedIndex = index;
+        byteTabs.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+        bytePicker.Visibility = narrow ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void UpdateSelectedTab()
     {
@@ -105,6 +126,9 @@ public sealed class EmvBitEditor : StackPanel
             var signature = $"{definition.Tag}/{definition.ProfileId}/{byteCount}";
             if (displayedProfile != signature)
             {
+                byteBody.Children.Clear();
+                compact = null; compactIndex = -1;
+                byteContents.Clear();
                 byteTabs.TabItems.Clear();
                 checks.Clear();
                 byteValues.Clear();
@@ -132,15 +156,19 @@ public sealed class EmvBitEditor : StackPanel
                         bitRows.Children.Add(check);
                     }
                     byteRows.Children.Add(bitRows);
+                    byteContents.Add(byteRows);
+                    byteBody.Children.Add(byteRows);
                     byteTabs.TabItems.Add(new TabViewItem
                     {
                         Header = CreateTabHeader($"Byte {i + 1}"),
                         IsClosable = false,
-                        Content = byteRows
+                        Content = null
                     });
                 }
+                bytePicker.ItemsSource = Enumerable.Range(1, byteCount).Select(n => $"Byte {n}").ToArray();
                 byteTabs.SelectedIndex = 0;
                 UpdateSelectedTab();
+                ArrangeBytes();
             }
             var valid = workspace.Bits.Count == checks.Count;
             value.Text = valid ? $"Hex value: {CurrentHex()}" : "Enter a complete hex value, or start with zeroes.";

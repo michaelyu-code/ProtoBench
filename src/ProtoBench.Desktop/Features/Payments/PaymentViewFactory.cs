@@ -50,7 +50,11 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             expected.MaxLength = 64;
             inputs.Children.Add(expected);
         }
-        var calculate = new Button { Content = "Calculate / Decode", Command = vm.CalculateCommand };
+        var calculate = Ui.Primary(new Button { Content = vm is EmvWorkspace or BitmapWorkspace ? "Decode" : "Calculate", Command = vm.CalculateCommand });
+        void UpdateAction() => calculate.Content = vm is LuhnWorkspace ? vm.Mode == 0 ? "Validate" : "Calculate check digit"
+            : vm is BitmapWorkspace ? vm.Mode == 1 ? "Encode" : "Decode" : vm is EmvWorkspace ? "Decode" : "Calculate ARQC";
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Mode)) UpdateAction(); };
+        UpdateAction();
         if (vm is EmvWorkspace live)
         {
             inputs.Children.Add(Ui.Button("Load example", live.LoadExample));
@@ -61,7 +65,36 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
         inputs.Children.Add(Ui.Row(calculate, new Button { Content = "Clear inputs", Command = vm.ClearCommand }));
         inputs.Children.Add(Ui.BoundText(vm, nameof(vm.Error)));
         if (vm is not EmvWorkspace) inputs.Children.Add(Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
-        textResults.Children.Add(output);
+        if (vm is LuhnWorkspace) output.FontSize = 18;
+        if (vm is BitmapWorkspace)
+        {
+            var fieldGroups = ToolLayout.Stack();
+            textResults.Children.Add(ResultValues.Create(vm, () => vm.Output, "Hex"));
+            textResults.Children.Add(fieldGroups);
+            textResults.Children.Add(new Expander { Header = "Binary and decoded text", Content = output,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(vm.Output)) return;
+                fieldGroups.Children.Clear();
+                var line = vm.Output.Split('\n').FirstOrDefault(line => line.StartsWith("Data fields (", StringComparison.Ordinal));
+                if (line is null) return;
+                var separator = line.IndexOf(": ", StringComparison.Ordinal);
+                var numbers = line[(separator + 2)..].Split(',').Select(s => int.TryParse(s.Trim(), out var n) ? n : 0).Where(n => n > 0).ToArray();
+                foreach (var secondary in new[] { false, true })
+                {
+                    var group = numbers.Where(n => (n > 64) == secondary).ToArray();
+                    if (group.Length == 0) continue;
+                    fieldGroups.Children.Add(Ui.Text(secondary ? "Secondary bitmap fields" : "Primary bitmap fields", 16));
+                    var chips = new AdaptiveColumns { MinimumColumnWidth = 64, MaximumColumns = 8, ColumnSpacing = 6, RowSpacing = 6 };
+                    foreach (var number in group) chips.Children.Add(ToolLayout.Section("", Ui.Text($"DE {number}")));
+                    fieldGroups.Children.Add(chips);
+                }
+                if (numbers.Length == 0) fieldGroups.Children.Add(Ui.Text("No data fields set."));
+            };
+        }
+        else if (vm is ArqcWorkspace) textResults.Children.Add(ResultValues.Create(vm, () => vm.Output, "ARQC", "Verification"));
+        else textResults.Children.Add(output);
         textResults.Children.Add(Ui.Button("Copy result", () =>
         {
             if (vm.Output.Length == 0) return;
@@ -88,17 +121,20 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             profile.SetBinding(ComboBox.SelectedIndexProperty, new Binding { Source = tagWorkspace, Path = new PropertyPath(nameof(tagWorkspace.ProfileIndex)), Mode = BindingMode.TwoWay });
             inputs.Children.Remove(modes);
             inputs.Children.Remove(input);
-            var tagOptions = new AdaptiveColumns { MaximumColumns = 3, MinimumColumnWidth = 220 };
+            var tagOptions = new AdaptiveColumns { MinimumColumnWidth = 220 };
             tagOptions.Children.Add(modes);
             tagOptions.Children.Add(profile);
-            tagOptions.Children.Add(input);
             inputs.Children.Insert(0, tagOptions);
+            inputs.Children.Insert(1, input);
             return ToolLayout.Page(vm.Title, "Decode tag values and edit individual bits.",
                 ToolLayout.Section("", inputs), ToolLayout.Section("", results),
                 ToolLayout.Help(Ui.BoundText(vm, nameof(vm.Help))));
         }
-        return ToolLayout.Page(vm.Title, vm is EmvWorkspace ? "Decode tag values and edit individual bits." : "Local payment card calculations and decoding.",
-            ToolLayout.Columns(340, ToolLayout.Section("Inputs", inputs), ToolLayout.Section(vm is EmvWorkspace ? "" : "Results", results)),
+        var inputSection = ToolLayout.Section("Inputs", inputs);
+        var resultSection = ToolLayout.Section("Results", results);
+        return ToolLayout.Page(vm.Title, "Local payment card calculations and decoding.",
+            vm is LuhnWorkspace ? ToolLayout.Stack(inputSection, resultSection)
+                : ToolLayout.Workspace(vm, inputSection, resultSection, () => vm.Output.Length > 0),
             ToolLayout.Help(Ui.BoundText(vm, nameof(vm.Help))));
     }
 }

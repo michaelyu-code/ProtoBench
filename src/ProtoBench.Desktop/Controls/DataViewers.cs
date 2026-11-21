@@ -7,6 +7,8 @@ namespace ProtoBench.Desktop.Controls;
 
 public sealed class RawTextViewer : TextBox
 {
+    public bool CompactViewport { get; set; } = true;
+    private XamlRoot? observedRoot;
     public RawTextViewer()
     {
         IsReadOnly = true;
@@ -15,6 +17,28 @@ public sealed class RawTextViewer : TextBox
         FontFamily = new FontFamily("Cascadia Mono");
         MinHeight = 140;
         MaxHeight = 280;
+        Loaded += (_, _) =>
+        {
+            if (observedRoot is not null) observedRoot.Changed -= RootChanged;
+            observedRoot = XamlRoot;
+            if (observedRoot is not null) observedRoot.Changed += RootChanged;
+            UpdateViewport();
+        };
+        Unloaded += (_, _) => { if (observedRoot is not null) observedRoot.Changed -= RootChanged; observedRoot = null; };
+        RegisterPropertyChangedCallback(TextProperty, (_, _) => UpdateViewport());
+        SizeChanged += (_, _) => UpdateViewport();
+    }
+    private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => UpdateViewport();
+    private void UpdateViewport()
+    {
+        if (!CompactViewport) return;
+        // Empty outputs should not reserve a large blank editor. Filled results
+        // retain a bounded local viewport, even on short laptop windows.
+        var height = XamlRoot?.Size.Height ?? 900;
+        var minimum = string.IsNullOrEmpty(Text) ? 40 : height < 700 ? 64 : 80;
+        if (MinHeight != minimum) MinHeight = minimum;
+        var maximum = Math.Max(minimum, Math.Min(480, height * .45));
+        if (MaxHeight != maximum) MaxHeight = maximum;
     }
 }
 public sealed class HexViewer : TextBox

@@ -1,5 +1,35 @@
 # Verification record
 
+## Manual sidebar expansion — 22 November 2026
+
+The title-bar menu toggle now overrides responsive Auto mode for the current session. Opening it docks the pane; selecting a category/tool and resizing no longer dismiss it. Explicit collapse uses the compact rail or hides the pane at narrow widths. Menu-container replacement is queued after pane transitions instead of mutating NavigationView during its property callback.
+
+Release solution build passed with zero warnings/errors. Live checks confirmed opening from compact mode, selecting Utilities, keeping the pane docked while narrowing through both responsive breakpoints, explicitly collapsing/reopening below 640 DIPs, and opening the relay with the sidebar still visible. The verification copy was closed; the original Debug session was preserved.
+
+## Timed Key Presser — 22 November 2026
+
+Added the Utilities workspace with key selection (F1–F24 and common keys), an interval in seconds, combined Start/Stop, locked configuration and a bounded timestamped auto-scrolling activity textbox. The UI-thread timer continues across tab switches; workspace disposal stops it. Native SendInput emits a down/up pair, checks held modifiers/keys, and reports rejected or incomplete input. Scheduling uses monotonic elapsed time and does not replay overdue presses after a pause.
+
+Release build passed with zero warnings/errors. The suite passed 517 tests with the existing opt-in 2-GiB test skipped. Fifteen new cases use a fake clock and fake keyboard without injecting real input: validation, first-press delay, repeated intervals, input locking, stop/restart/disposal, late ticks, wall-clock changes, held-key skips, failed delivery, catalog validation and log retention.
+
+Live Release checks opened the tool through dashboard search, confirmed F24/300 defaults, changed to one second, observed real accepted F24 presses and timestamps, disabled inputs and the Stop label, then stopped and confirmed inputs unlocked. A second run continued while Dashboard was selected; returning showed the increased count and log scrolling to later entries. The session was stopped with 53 total presses. The verification window was left stopped. Delivery to elevated targets, Windows suspension and alternate DPI/theme configurations remain manual.
+
+## Category dashboard navigation — 22 November 2026
+
+Reproduced opening TCP / TLS Relay and clicking Utilities in the collapsed sidebar: the dashboard returned to All tools and highlighted Home. Dashboard category filtering now keeps its own state across tab unload/reload, restores the dropdown on load, and synchronizes the sidebar with the active category. Selecting a category activates the Dashboard tab before applying its filter; the page heading identifies the section. Explicit Home navigation still resets to All tools.
+
+Verified in a separate Release instance while preserving the running Debug session: Utilities showed exactly TCP / TLS Relay, Test Telnet Server and X.509 Certificate Inspector after returning from the relay tab, with Utilities highlighted; Home showed all 13 tools; Payments showed its four tools. The verification copy was closed afterward.
+
+## Responsive workspaces — 22 November 2026
+
+Added wrapping action rows, compact page spacing, bounded output editors, coordinated navigation breakpoints and an open-tabs menu. Standard narrow tool workspaces switch between Inputs and Results without recreating editors. Parser/relay details use full-width navigation; parser field details no longer force a 560/720-DIP minimum viewport. Generator field editing preserves the JSON representation. Settings and dashboard layouts were compacted, with per-tool result improvements for calculators, payments and certificates.
+
+The Debug solution builds with zero warnings/errors. The four test projects pass 502 tests with the existing opt-in 2-GiB test skipped. The initial sandboxed test run could not connect to testhost; running the same command outside that sandbox completed successfully. Parser presentation tests now verify that opening details preserves the existing viewport budget.
+
+Live checks covered dashboard reflow in narrow/short windows, keyboard search/Enter in the new-tab picker, bitwise calculation and automatic result navigation, generator field population and a 16-byte preview, relay configuration access and field validation, grouped Settings, and EMV example loading/byte selection across narrow and wide layouts. The EMV check caught a visual-parent exception; byte editors now remain in one container and switch visibility. Repeating the check preserved E0F8C8 and Byte 2/F8 through both resize directions without crashing. No listeners were started or files exported during these checks.
+
+Broader verification remains manual: enlarged Windows text and alternate DPI/theme combinations, parser navigation with installed format definitions, relay inspection with active traffic, custom plugin views, and native file dialogs. Recommended window sizes are 1280×800, 1024×768, 800×600 and a narrow snapped window. Check primary actions, keyboard focus, Back navigation, retained input/selection, and long field/error text at each size.
+
 ## Relay payload tab alignment — 16 November 2026
 
 Moved the capture summary into the left traffic pane so the right Hex/Text/Details tabs start at the top of the shared card in the side-by-side layout. Summary text can use four lines within the narrower traffic pane. The existing narrow-window stacking and footer actions are retained. The tab alignment was visually checked in the running app; the Desktop build passed with zero warnings/errors.

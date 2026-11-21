@@ -27,13 +27,13 @@ public sealed class MainWindow : Window
         IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
         PaneDisplayMode = NavigationViewPaneDisplayMode.Auto,
         OpenPaneLength = 220,
-        CompactModeThresholdWidth = 880,
-        ExpandedModeThresholdWidth = 880,
+        CompactModeThresholdWidth = 640,
+        ExpandedModeThresholdWidth = 1120,
         IsSettingsVisible = true,
         AlwaysShowHeader = false,
         IsPaneToggleButtonVisible = false
     };
-    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.SizeToContent, VerticalAlignment = VerticalAlignment.Stretch };
+    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.Equal, VerticalAlignment = VerticalAlignment.Stretch };
     private readonly InfoBar notification = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly InfoBar updateNotification = new() { IsClosable = true, Severity = InfoBarSeverity.Informational, Title = "Update available" };
     private Task<UpdateRelease?>? startupUpdateCheck;
@@ -42,6 +42,7 @@ public sealed class MainWindow : Window
     private Action<UpdateRelease?>? updatePanelResult;
     private FrameworkElement? updatePanel;
     private bool startupCheckStarted, windowClosed;
+    private bool? manualPaneOpen;
     private readonly Grid root = new();
     private readonly DashboardView dashboard;
     private readonly TabViewItem homeTab;
@@ -84,7 +85,11 @@ public sealed class MainWindow : Window
         Content = root;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(header.Bar);
-        header.Bar.PaneToggleRequested += (_, _) => navigation.IsPaneOpen = !navigation.IsPaneOpen;
+        header.Bar.PaneToggleRequested += (_, _) =>
+        {
+            manualPaneOpen = !navigation.IsPaneOpen;
+            ApplyNavigationPreference();
+        };
         root.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
         root.Loaded += async (_, _) =>
         {
@@ -96,7 +101,24 @@ public sealed class MainWindow : Window
 
         dashboard = new DashboardView(vm, (id, createNew) => Open(id, createNew), OpenRecentAsync, Report);
         homeTab = new TabViewItem { Header = "Dashboard", IsClosable = false, Content = dashboard, Tag = "dashboard" };
+        dashboard.CategoryChanged += (_, _) => { if (ReferenceEquals(tabs.SelectedItem, homeTab)) SyncNavigation(); };
         tabs.TabItems.Add(homeTab);
+        var openTabs = new Button { Content = "⌄", VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(openTabs, "Open tabs");
+        ToolTipService.SetToolTip(openTabs, "Open tabs");
+        var tabMenu = new MenuFlyout();
+        tabMenu.Opening += (_, _) =>
+        {
+            tabMenu.Items.Clear();
+            foreach (var item in tabs.TabItems.OfType<TabViewItem>())
+            {
+                var entry = new MenuFlyoutItem { Text = item.Header?.ToString() ?? "Workspace" };
+                entry.Click += (_, _) => tabs.SelectedItem = item;
+                tabMenu.Items.Add(entry);
+            }
+        };
+        openTabs.Flyout = tabMenu;
+        tabs.TabStripFooter = openTabs;
         tabs.SelectedItem = homeTab;
         navigation.Content = tabs;
         navigation.MenuItems.Add(home);
@@ -128,7 +150,13 @@ public sealed class MainWindow : Window
             compactCategoryItems.Add(category.Key, compact);
             navigation.MenuItems.Add(group);
         }
-        navigation.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationHierarchy());
+        navigation.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) =>
+        {
+            // Let NavigationView finish its pane transition before replacing menu
+            // containers; changing the collection during opening can dismiss it.
+            navigation.DispatcherQueue.TryEnqueue(UpdateNavigationHierarchy);
+        });
+        navigation.SizeChanged += (_, _) => ApplyNavigationPreference();
         UpdateNavigationHierarchy();
         navigation.ItemInvoked += (_, args) =>
         {
@@ -136,20 +164,22 @@ public sealed class MainWindow : Window
                 ShowSettings();
             else if (args.InvokedItemContainer?.Tag is ToolCategory category)
             {
-                dashboard.ShowCategory(category);
                 tabs.SelectedItem = homeTab;
+                dashboard.ShowCategory(category);
+                SyncNavigation();
             }
             else if (args.InvokedItemContainer?.Tag is string id)
             {
                 if (id == "dashboard")
                 {
-                    dashboard.ShowCategory(null);
                     tabs.SelectedItem = homeTab;
+                    dashboard.ShowCategory(null);
+                    SyncNavigation();
                 }
                 else
                     Open(id);
             }
-            if (navigation.DisplayMode != NavigationViewDisplayMode.Expanded)
+            if (manualPaneOpen != true && navigation.DisplayMode != NavigationViewDisplayMode.Expanded)
                 navigation.IsPaneOpen = false;
         };
         tabs.AddTabButtonClick += (_, _) => ShowToolPicker();
@@ -274,6 +304,18 @@ public sealed class MainWindow : Window
         tabs.SelectedItem = tab;
     }
 
+    private void ApplyNavigationPreference()
+    {
+        if (manualPaneOpen is not { } open) return;
+        // A manual open is docked, so overlay light-dismiss and responsive Auto
+        // transitions cannot immediately undo the title-bar toggle.
+        var mode = open ? NavigationViewPaneDisplayMode.Left
+            : navigation.ActualWidth < navigation.CompactModeThresholdWidth
+                ? NavigationViewPaneDisplayMode.LeftMinimal : NavigationViewPaneDisplayMode.LeftCompact;
+        if (navigation.PaneDisplayMode != mode) navigation.PaneDisplayMode = mode;
+        if (navigation.IsPaneOpen != open) navigation.IsPaneOpen = open;
+    }
+
     private void UpdateNavigationHierarchy()
     {
         // Compact category icons navigate to the dashboard directly. Child flyouts
@@ -285,7 +327,7 @@ public sealed class MainWindow : Window
             if (!ReferenceEquals(navigation.MenuItems[index], item)) navigation.MenuItems[index] = item;
             index++;
         }
-        if (tabs.SelectedItem is TabViewItem { Tag: ToolWorkspace }) SyncNavigation();
+        SyncNavigation();
     }
 
     private void SyncNavigation()
@@ -294,6 +336,8 @@ public sealed class MainWindow : Window
             return;
         if (tab.Tag is ToolWorkspace workspace && toolItems.TryGetValue(workspace.ToolId, out var item))
             navigation.SelectedItem = navigation.IsPaneOpen ? item : compactCategoryItems[vm.Tools.Get(workspace.ToolId).Category];
+        else if (tab == homeTab && dashboard.SelectedCategory is { } category)
+            navigation.SelectedItem = navigation.IsPaneOpen ? categoryItems[category] : compactCategoryItems[category];
         else
             navigation.SelectedItem = tab == settingsTab ? navigation.SettingsItem : home;
     }
@@ -335,6 +379,7 @@ public sealed class MainWindow : Window
                     IsClosable = true,
                     IconSource = new FontIconSource { Glyph = vm.Tools.Get(id).Icon }
                 };
+                ToolTipService.SetToolTip(tab, tab.Header);
                 tabs.TabItems.Add(tab);
                 tabs.SelectedItem = tab;
                 SyncNavigation();
@@ -369,11 +414,11 @@ public sealed class MainWindow : Window
             tabs.SelectedItem = settingsTab;
             return;
         }
-        var theme = new ComboBox { Header = "Appearance", ItemsSource = new[] { "Default", "Light", "Dark" }, SelectedItem = vm.Settings.Current.Theme, MinWidth = 240 };
+        var theme = new ComboBox { Header = "Theme", ItemsSource = new[] { "Default", "Light", "Dark" }, SelectedItem = vm.Settings.Current.Theme, HorizontalAlignment = HorizontalAlignment.Stretch };
         theme.SelectionChanged += async (_, _) => { try { if (theme.SelectedItem is string selected) await vm.Settings.SetThemeAsync(selected); } catch (Exception ex) { Report(ex); } };
         var autoScroll = new CheckBox
         {
-            Content = "Automatically scroll to results after parsing",
+            Content = Ui.Text("Automatically scroll to results after parsing"),
             IsChecked = vm.Settings.Current.AutoScrollParserResults
         };
         autoScroll.Click += async (_, _) =>
@@ -385,7 +430,7 @@ public sealed class MainWindow : Window
         };
         var autoFit = new CheckBox
         {
-            Content = "Auto-fit log parser results to the window",
+            Content = Ui.Text("Auto-fit log parser results to the window"),
             IsChecked = vm.Settings.Current.AutoFitParserResults
         };
         autoFit.Click += async (_, _) =>
@@ -397,7 +442,7 @@ public sealed class MainWindow : Window
         };
         var verboseChecks = new CheckBox
         {
-            Content = "Verbose checks — show what was checked for each field",
+            Content = Ui.Text("Verbose checks — show what was checked for each field"),
             IsChecked = vm.Settings.Current.VerboseParserChecks
         };
         verboseChecks.Click += async (_, _) =>
@@ -412,14 +457,11 @@ public sealed class MainWindow : Window
             Header = "Settings",
             Tag = "settings",
             IsClosable = true,
-            Content = new ScrollViewer
-            {
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Content = Ui.Column(Ui.Heading("Settings"), theme,
+            Content = ToolLayout.Page("Settings", "Preferences and local app management.",
+                    ToolLayout.Section("Appearance", theme),
                     ToolLayout.Section("Log Parser", autoScroll, autoFit, verboseChecks),
-                    Ui.Text("Reload the app to apply plugin and custom definition changes."),
-                    Ui.AsyncButton("Reload app", ReloadAppAsync, Report),
-                    Ui.Text("Local settings, custom definitions and logs"), Ui.Text(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory),
+                    CreatePluginPanel(), CreateUpdatePanel(),
+                    ToolLayout.Section("Local files and definitions", Ui.Text(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory),
                     Ui.AsyncButton("Open log folder", async () =>
                     {
                         var directory = ProtoBench.Infrastructure.Configuration.AppPaths.LogDirectory;
@@ -437,14 +479,17 @@ public sealed class MainWindow : Window
                         if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
                             throw new InvalidOperationException("The schema JSON folder could not be opened.");
                     }, Report),
-                    Ui.Text("Put schema-version 1 JSON files in definitions/parsers or definitions/generators under this directory, then restart. Give customized definitions unique IDs. Bundled defaults remain separate."),
-                    Ui.Text("Log Parser streams files and clipboard text into a temporary disk index. Search covers the full indexed log, with 2,000 messages per page by default. Individual oversized records are skipped with diagnostics; regex execution is limited to 100 ms per operation. Legacy parser plugins need the streaming API for inputs above 16 MiB."),
-                    Ui.Text("Local error logs include exception types, error codes and method stack traces. Exception messages, record contents and file paths are excluded."),
+                    new Expander { Header = "Definitions and logging details", HorizontalAlignment = HorizontalAlignment.Stretch,
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Content = ToolLayout.Stack(
+                            Ui.Text("Put schema-version 1 JSON files in definitions/parsers or definitions/generators under this directory, then restart. Give customized definitions unique IDs. Bundled defaults remain separate."),
+                            Ui.Text("Log Parser streams logs into a temporary disk index. Search covers the full log. Oversized records produce diagnostics; legacy parser plugins need the streaming API for inputs above 16 MiB."),
+                            Ui.Text("Local error logs include exception types, error codes and method stack traces. Exception messages, record contents and file paths are excluded.")) },
+                    Ui.Text("Reload the app to apply plugin and custom definition changes."),
+                    Ui.AsyncButton("Reload app", ReloadAppAsync, Report)),
                     ToolLayout.Section("Remove local data",
                         Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
-                        Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report)),
-                    CreatePluginPanel(), CreateUpdatePanel())
-            }
+                        Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report)))
         };
         tabs.TabItems.Add(settingsTab);
         tabs.SelectedItem = settingsTab;
@@ -504,7 +549,7 @@ public sealed class MainWindow : Window
                 }
                 var active = pluginCatalog.Plugins.FirstOrDefault(p => p.Manifest.Id == manifest.Id);
                 var state = active is null ? "Not loaded this session" : $"Loaded · {active.Tools.Count} tools · {active.Parsers.Count} parsers · {active.Generators.Count} generators · {active.FieldDecoders.Count} decoders";
-                var enabled = new CheckBox { Content = $"Enable {manifest.Name} ({manifest.Version})", IsChecked = item.Enabled };
+                var enabled = new CheckBox { Content = Ui.Text($"Enable {manifest.Name} ({manifest.Version})"), IsChecked = item.Enabled };
                 enabled.Click += (_, _) =>
                 {
                     try { pluginPackages.SetEnabled(manifest.Id, enabled.IsChecked == true); status.Text = "Plugin setting saved. Restart the app to apply it."; }

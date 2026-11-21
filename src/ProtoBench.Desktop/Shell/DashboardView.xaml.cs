@@ -14,6 +14,12 @@ public sealed partial class DashboardView : UserControl
     private readonly Action<Exception> report;
     private readonly List<FrameworkElement> cards = [];
     private int columns;
+    private bool compact;
+    private string categoryFilter = "All tools";
+    private bool updatingCategory;
+    public ToolCategory? SelectedCategory => vm.Tools.Tools
+        .Where(t => t.Category.DisplayName() == categoryFilter).Select(t => (ToolCategory?)t.Category).FirstOrDefault();
+    public event EventHandler? CategoryChanged;
 
     public DashboardView(ShellViewModel vm, Action<string, bool> open, Func<string, Task> openFile, Action<Exception> report)
     {
@@ -26,8 +32,25 @@ public sealed partial class DashboardView : UserControl
             .Concat(vm.Tools.Tools.Select(t => t.Category.DisplayName()).Distinct().Order()).ToArray();
         Category.SelectedIndex = 0;
         Search.TextChanged += (_, _) => { vm.Query = Search.Text; RefreshTools(); };
-        Category.SelectionChanged += (_, _) => RefreshTools();
-        ResetFilters.Click += (_, _) => { Search.Text = ""; Category.SelectedIndex = 0; };
+        Category.SelectionChanged += (_, _) =>
+        {
+            // A ComboBox can reset selection while TabView unloads/reloads its
+            // content. Only user changes in the active view update the filter.
+            if (updatingCategory || !IsLoaded || Category.SelectedItem is not string selected) return;
+            categoryFilter = selected;
+            RefreshTools();
+            CategoryChanged?.Invoke(this, EventArgs.Empty);
+        };
+        Loaded += (_, _) => { RestoreCategorySelection(); RefreshTools(); };
+        ResetFilters.Click += (_, _) => ShowCategory(null);
+        SizeChanged += (_, _) =>
+        {
+            var next = ActualWidth < 720 || ActualHeight < 600;
+            PageContent.Margin = new Thickness(next ? 12 : 24);
+            PageContent.Spacing = next ? 10 : 20;
+            if (compact != next) { compact = next; RefreshTools(); }
+            else ReflowCards();
+        };
         ToolCards.SizeChanged += (_, _) => ReflowCards();
         Filters.SizeChanged += (_, args) =>
         {
@@ -42,9 +65,18 @@ public sealed partial class DashboardView : UserControl
 
     public void ShowCategory(ToolCategory? category)
     {
+        categoryFilter = category?.DisplayName() ?? "All tools";
         Search.Text = "";
-        Category.SelectedItem = category?.DisplayName() ?? "All tools";
+        RestoreCategorySelection();
         RefreshTools();
+        CategoryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RestoreCategorySelection()
+    {
+        updatingCategory = true;
+        try { Category.SelectedItem = categoryFilter; }
+        finally { updatingCategory = false; }
     }
 
     public void Refresh()
@@ -68,7 +100,8 @@ public sealed partial class DashboardView : UserControl
         ToolCards.Children.Clear();
         cards.Clear();
         var favorites = vm.Settings.Current.FavoriteTools;
-        var filter = Category.SelectedItem as string ?? "All tools";
+        var filter = categoryFilter;
+        DashboardTitle.Text = filter == "All tools" ? "Dashboard" : filter;
         var tools = vm.FilteredTools
             .Where(t => filter == "All tools" || (filter == "Favorites" ? favorites.Contains(t.Id) : t.Category.DisplayName() == filter))
             .OrderByDescending(t => favorites.Contains(t.Id)).ThenBy(t => t.Name).ToArray();
@@ -86,7 +119,7 @@ public sealed partial class DashboardView : UserControl
 
     private FrameworkElement CreateCard(ToolDescriptor tool, bool favorite)
     {
-        var layout = new Grid { Padding = new Thickness(16), RowSpacing = 12, MinHeight = 180 };
+        var layout = new Grid { Padding = new Thickness(compact ? 10 : 16), RowSpacing = compact ? 6 : 12, MinHeight = compact ? 0 : 180 };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -109,12 +142,22 @@ public sealed partial class DashboardView : UserControl
         header.Children.Add(star);
         layout.Children.Add(header);
         var description = Ui.Text(tool.Description);
+        description.MaxLines = compact ? 2 : 0;
+        description.TextTrimming = TextTrimming.CharacterEllipsis;
+        ToolTipService.SetToolTip(description, tool.Description);
         description.Foreground = Resource("TextFillColorSecondaryBrush");
         Grid.SetRow(description, 1);
         layout.Children.Add(description);
         var primary = Ui.Button("Open", () => open(tool.Id, false));
         primary.Style = (Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"];
-        var actions = Ui.Row(primary, Ui.Button("New tab", () => open(tool.Id, true)));
+        var newTab = Ui.Button("New tab", () => open(tool.Id, true));
+        var more = new Button { Content = "⋯" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, "More actions for " + tool.Name);
+        var menu = new MenuFlyout();
+        var newItem = new MenuFlyoutItem { Text = "Open in new tab" };
+        newItem.Click += (_, _) => open(tool.Id, true);
+        menu.Items.Add(newItem); more.Flyout = menu;
+        var actions = Ui.Row(primary, compact ? more : newTab);
         Grid.SetRow(actions, 2);
         layout.Children.Add(actions);
         return new Border
@@ -129,7 +172,7 @@ public sealed partial class DashboardView : UserControl
 
     private void ReflowCards()
     {
-        var next = Math.Clamp((int)((ToolCards.ActualWidth + 16) / 320), 1, 3);
+        var next = compact ? 1 : Math.Clamp((int)((ToolCards.ActualWidth + 16) / 320), 1, 3);
         if (columns == next)
             return;
         columns = next;

@@ -44,11 +44,15 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
         UpdateTls();
         var config = new ContentControl
         {
-            Content = ToolLayout.Stack(profile, Ui.BoundText(vm, nameof(vm.ProfileDescription)), ToolLayout.Columns(160, address, port), ansi, tls, tlsSettings),
+            Content = ToolLayout.Stack(profile, new Expander { Header = "Profile details", Content = Ui.BoundText(vm, nameof(vm.ProfileDescription)),
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }, ToolLayout.Columns(160, address, port), ansi, tls, tlsSettings),
             HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         config.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
-        var start = Ui.Button("Start server", vm.Start);
+        var configuration = new Expander { Header = "Server configuration", IsExpanded = true, Content = config,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.CanConfigure)) configuration.IsExpanded = vm.CanConfigure; };
+        var start = Ui.Primary(Ui.Button("Start server", vm.Start));
         start.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
         var stop = new Button { Content = "Stop server" };
         stop.Click += async (_, _) => await vm.StopAsync();
@@ -75,7 +79,7 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
         var page = ToolLayout.Page(vm.Title,
             "Test server with built-in and plugin profiles, optional TLS, and up to 8 clients.",
             ToolLayout.Columns(340,
-                ToolLayout.Section("Server", config, Ui.Row(start, stop), endpoint, copyEndpoint,
+                ToolLayout.Section("Server", Ui.Row(start, stop), endpoint, copyEndpoint, configuration,
                     Ui.BoundText(vm, nameof(vm.Status)), Ui.BoundText(vm, nameof(vm.Error)), feedback),
                 ToolLayout.Section("Activity", Ui.BoundText(vm, nameof(vm.Summary)), activity, Ui.Button("Clear activity", vm.ClearActivity))),
             help);

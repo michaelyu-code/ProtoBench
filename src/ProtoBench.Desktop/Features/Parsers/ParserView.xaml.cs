@@ -23,6 +23,7 @@ public sealed partial class ParserView : UserControl
     private double? preferredDetailWidth;
     private readonly ParserResultPresentation presentation;
     private bool autoFitEnabled;
+    private bool inspectingMessage;
     private int specificationColumns;
     private bool verboseChecks;
     private IReadOnlyList<FieldCheck> checkDetails = [];
@@ -131,6 +132,20 @@ public sealed partial class ParserView : UserControl
         verboseChecks = vm.VerboseChecks;
         ResultsViewPicker.ItemsSource = new[] { "Message cards", "Table" };
         ResultsViewPicker.SelectedIndex = 0;
+        BackToMessages.Click += (_, _) =>
+        {
+            inspectingMessage = false;
+            ArrangePanes();
+            Records.Focus(FocusState.Programmatic);
+            MessagesPanel.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0 });
+        };
+        Records.ItemClick += (_, _) =>
+        {
+            inspectingMessage = true;
+            ArrangePanes();
+            if (BackToMessages.Visibility == Visibility.Visible) BackToMessages.Focus(FocusState.Programmatic);
+        };
+        Ui.Primary(ParseTextButton); Ui.Primary(ParsePathButton);
         ResultsViewPicker.SelectionChanged += (_, _) =>
         {
             var table = ResultsViewPicker.SelectedIndex == 1;
@@ -148,6 +163,8 @@ public sealed partial class ParserView : UserControl
                         if (index < 0) return;
                         ResultsViewPicker.SelectedIndex = 0;
                         Records.SelectedIndex = index;
+                        inspectingMessage = true;
+                        ArrangePanes();
                     };
                 }
                 _ = tableView.LoadAsync(vm.Page);
@@ -203,6 +220,7 @@ public sealed partial class ParserView : UserControl
             Descending.IsChecked == true, pageIndex, PageSizePicker.SelectedItem is int size ? size : LogQuery.DefaultPageSize);
         void Refresh()
         {
+            inspectingMessage = false;
             refreshingRecords = suppressRecordScroll = true;
             selectionCancellation?.Cancel();
             rows = vm.Page?.Rows ?? [];
@@ -241,6 +259,9 @@ public sealed partial class ParserView : UserControl
         void ScheduleSearch()
         {
             if (updatingPage) return;
+            var active = (DirectionPicker.SelectedIndex > 0 ? 1 : 0) + (RolePicker.SelectedIndex > 0 ? 1 : 0)
+                + (SortPicker.SelectedIndex > 0 || Descending.IsChecked == true ? 1 : 0);
+            FilterOptions.Header = active > 0 ? $"Filters and sort · {active} active" : "Filters and sort";
             searchDelay.Stop();
             vm.CancelSearch();
             selectionCancellation?.Cancel();
@@ -286,7 +307,7 @@ public sealed partial class ParserView : UserControl
             }
             args.Handled = true;
         };
-        CloseFieldDetail.Click += (_, _) => FieldList.SelectedItem = null;
+        CloseFieldDetail.Click += (_, _) => { FieldList.SelectedItem = null; FieldList.Focus(FocusState.Programmatic); };
         ActualThemeChanged += (_, _) => Refresh();
         PreviousRecord.Click += async (_, _) =>
         {
@@ -356,6 +377,7 @@ public sealed partial class ParserView : UserControl
                 var record = await vm.GetRecordAsync(summary.Id, token);
                 token.ThrowIfCancellationRequested();
                 ShowRecord(record, vm);
+                if (bringIntoView) { inspectingMessage = true; ArrangePanes(); }
                 if (bringIntoView) InspectorPanel.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0 });
                 var related = await vm.GetRelatedAsync(summary.Id, record, token);
                 token.ThrowIfCancellationRequested();
@@ -584,6 +606,9 @@ public sealed partial class ParserView : UserControl
     private void ArrangePanes()
     {
         var showing = FieldDetailPanel.Visibility == Visibility.Visible;
+        var compactPage = PageScroll.ActualWidth < 720 || PageScroll.ActualHeight < 640;
+        PageContent.Margin = new Thickness(compactPage ? 12 : 20);
+        PasteInput.Height = PageScroll.ActualHeight < 640 ? 110 : 180;
         double availableHeight = double.PositiveInfinity;
         if (PageScroll.IsLoaded && PageScroll.ActualHeight > 0)
         {
@@ -610,6 +635,9 @@ public sealed partial class ParserView : UserControl
         InspectorTabs.Height = ParserResultPresentation.DetailHeight(availableHeight, inspectorHeaderHeight,
             showing, showing && !layout.DetailsBeside);
         var beside = layout.MessagesBeside;
+        MessagesPanel.Visibility = beside || !inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
+        InspectorPanel.Visibility = beside || inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
+        BackToMessages.Visibility = !beside && inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
         MessagesPanel.Height = ParserResultPresentation.MessagePaneHeight(availableHeight, beside,
             inspectorHeaderHeight + InspectorTabs.Height + InspectorPanel.Padding.Bottom + InspectorPanel.BorderThickness.Bottom);
         var leftWidth = beside ? new GridLength(layout.MessageWidth) : new GridLength(1, GridUnitType.Star);
@@ -618,7 +646,7 @@ public sealed partial class ParserView : UserControl
         if (BrowseLayout.ColumnDefinitions[1].Width != rightWidth) BrowseLayout.ColumnDefinitions[1].Width = rightWidth;
         Grid.SetColumnSpan(MessagesPanel, beside ? 1 : 2);
         Grid.SetColumn(InspectorPanel, beside ? 1 : 0);
-        Grid.SetRow(InspectorPanel, beside ? 0 : 1);
+        Grid.SetRow(InspectorPanel, 0);
         Grid.SetColumnSpan(InspectorPanel, beside ? 1 : 2);
         var fieldBeside = layout.DetailsBeside;
         var detailWidth = layout.DetailWidth;
@@ -630,24 +658,27 @@ public sealed partial class ParserView : UserControl
         DetailResizeHandle.Visibility = fieldBeside ? Visibility.Visible : Visibility.Collapsed;
         DetailResizeCursor.Visibility = DetailResizeHandle.Visibility;
         Grid.SetColumn(FieldDetailPanel, fieldBeside ? 2 : 0);
-        Grid.SetRow(FieldDetailPanel, fieldBeside ? 0 : 1);
+        Grid.SetRow(FieldDetailPanel, 0);
         Grid.SetColumnSpan(FieldDetailPanel, fieldBeside ? 1 : 3);
         // Each pane owns its scroll area. Neither the list nor the detail header can be
         // scrolled out of the tab viewport by scrolling the other pane.
         var stacked = showing && !fieldBeside;
+        FieldList.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
+        CloseFieldDetail.Content = stacked ? "← Fields" : "×";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(CloseFieldDetail, stacked ? "Back to fields" : "Close field details");
         // A short stacked pane may be smaller than the title/value/actions alone.
         // Let the entire panel scroll to reach the tabs, and keep each tab's own
         // content viewport usable. Side-by-side headers remain fixed in place.
-        FieldDetailScroll.VerticalScrollMode = stacked ? ScrollMode.Auto : ScrollMode.Disabled;
-        FieldDetailScroll.VerticalScrollBarVisibility = stacked ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-        FieldDetailTabs.Height = stacked ? 320 : double.NaN;
-        // A proportional split wastes the detail budget on the list as the inspector grows.
-        // Keep several field rows available and give the remaining height to details.
-        var listHeight = stacked ? new GridLength(128) : new GridLength(1, GridUnitType.Star);
-        var detailHeight = stacked ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        var scrollDetails = stacked || InspectorTabs.Height < 560;
+        FieldDetailScroll.VerticalScrollMode = scrollDetails ? ScrollMode.Auto : ScrollMode.Disabled;
+        FieldDetailScroll.VerticalScrollBarVisibility = scrollDetails ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        FieldDetailTabs.Height = scrollDetails ? 260 : double.NaN;
+        // The selected narrow detail replaces the list in the same grid row.
+        var listHeight = new GridLength(1, GridUnitType.Star);
+        var detailHeight = new GridLength(0);
         if (FieldLayout.RowDefinitions[0].Height != listHeight) FieldLayout.RowDefinitions[0].Height = listHeight;
         if (FieldLayout.RowDefinitions[1].Height != detailHeight) FieldLayout.RowDefinitions[1].Height = detailHeight;
-        FieldLayout.RowSpacing = stacked ? 8 : 0;
+        FieldLayout.RowSpacing = 0;
     }
 
     private void ResizeDetails(double change)

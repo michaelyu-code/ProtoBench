@@ -47,7 +47,7 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
             }
             if (definition.Description.Length > 0) inputs.Children.Add(Ui.Text(definition.Description, 12));
         }
-        var run = Ui.AsyncButton(tool.ActionLabel, vm.ExecuteAsync);
+        var run = Ui.Primary(Ui.AsyncButton(tool.ActionLabel, vm.ExecuteAsync));
         var clear = Ui.Button("Clear inputs", () => { if (vm.IsBusy) return; vm.Clear(); foreach (var action in reset) action(); });
         var cancel = Ui.Button("Cancel", vm.Cancel);
         var controls = ToolLayout.Stack(inputs, Ui.Row(run, clear, cancel), Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
@@ -66,13 +66,14 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
             run.IsEnabled = clear.IsEnabled = !vm.IsBusy;
             foreach (var input in inputs.Children.OfType<Control>()) input.IsEnabled = !vm.IsBusy;
             cancel.IsEnabled = vm.IsBusy;
+            cancel.Visibility = vm.IsBusy ? Visibility.Visible : Visibility.Collapsed;
             ParsedFieldTree.Show(tree, new ParsedRecord(0, "", vm.Fields));
             tree.Visibility = vm.Fields.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Output)) copied.Text = ""; Refresh(); };
         Refresh();
         return ToolLayout.Page(tool.Name, tool.Description,
-            ToolLayout.Columns(340, ToolLayout.Section("Inputs", controls), ToolLayout.Section("Results", results)),
+            ToolLayout.Workspace(vm, ToolLayout.Section("Inputs", controls), ToolLayout.Section("Results", results), () => vm.Output.Length > 0 || vm.Fields.Count > 0),
             ToolLayout.Help(Ui.Text(tool.Help)));
     }
 }

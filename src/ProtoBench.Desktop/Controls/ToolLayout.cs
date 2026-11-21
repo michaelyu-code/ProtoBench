@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using ProtoBench.Application.Workspaces;
 
 namespace ProtoBench.Desktop.Controls;
 
@@ -42,6 +44,58 @@ public sealed class AdaptiveColumns : Grid
 
 public static class ToolLayout
 {
+    /// <summary>Preserves the same editors while switching narrow workspaces between input and output.</summary>
+    public static FrameworkElement Workspace(ToolWorkspace source, FrameworkElement input, FrameworkElement output,
+        Func<bool> hasResult, string resultProperty = "Output")
+    {
+        var host = new Grid { ColumnSpacing = 12, RowSpacing = 8 };
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.ColumnDefinitions.Add(new ColumnDefinition());
+        host.ColumnDefinitions.Add(new ColumnDefinition());
+        var edit = new ToggleButton { Content = "Inputs", IsChecked = true };
+        var inspect = new ToggleButton { Content = "Results" };
+        var navigation = Ui.Row(edit, inspect);
+        var resultStatus = new ContentControl { Content = Ui.BoundText(source, nameof(source.Status)), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        Grid.SetRow(resultStatus, 2); Grid.SetColumnSpan(resultStatus, 2);
+        Grid.SetColumnSpan(navigation, 2);
+        host.Children.Add(navigation); host.Children.Add(input); host.Children.Add(output);
+        host.Children.Add(resultStatus);
+        Grid.SetRow(input, 1); Grid.SetRow(output, 1);
+        bool results = false, narrow = false, pending = false;
+        void Refresh()
+        {
+            narrow = host.ActualWidth < 692;
+            navigation.Visibility = narrow ? Visibility.Visible : Visibility.Collapsed;
+            host.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            Grid.SetColumn(output, narrow ? 0 : 1);
+            input.Visibility = !narrow || !results ? Visibility.Visible : Visibility.Collapsed;
+            output.Visibility = !narrow || results ? Visibility.Visible : Visibility.Collapsed;
+            resultStatus.Visibility = narrow && results ? Visibility.Visible : Visibility.Collapsed;
+            edit.IsChecked = !results; inspect.IsChecked = results;
+        }
+        edit.Click += (_, _) => { results = false; Refresh(); };
+        inspect.Click += (_, _) => { results = true; Refresh(); };
+        host.SizeChanged += (_, _) => Refresh();
+        source.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(source.IsBusy) && !source.IsBusy && hasResult()) pending = true;
+            if (args.PropertyName == resultProperty)
+            {
+                pending = hasResult();
+                if (!pending) { results = false; Refresh(); }
+            }
+            if (pending && !source.IsBusy && host.IsLoaded)
+            {
+                pending = false; results = true;
+                if (narrow) inspect.Focus(FocusState.Programmatic);
+                Refresh();
+            }
+        };
+        host.Loaded += (_, _) => Refresh();
+        return host;
+    }
     public static StackPanel Stack(params UIElement[] children)
     {
         var panel = new StackPanel { Spacing = 10 };
@@ -66,6 +120,7 @@ public static class ToolLayout
         if (title.Length > 0) panel.Children.Add(Ui.Text(title, 18));
         foreach (var child in children) panel.Children.Add(child);
         border.Child = panel;
+        border.SizeChanged += (_, _) => border.Padding = new Thickness(border.ActualWidth < 480 ? 10 : 16);
         return border;
     }
     public static Expander Help(FrameworkElement text) => new()
@@ -79,7 +134,16 @@ public static class ToolLayout
         panel.Margin = new Thickness(20);
         panel.Spacing = 12;
         foreach (var child in children) panel.Children.Add(child);
-        return new ScrollViewer { Content = panel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        var page = new ScrollViewer { Content = panel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        page.SizeChanged += (_, _) =>
+        {
+            var compact = page.ActualWidth < 720 || page.ActualHeight < 640;
+            panel.Margin = new Thickness(compact ? 12 : 20);
+            panel.Spacing = compact ? 8 : 12;
+            ((TextBlock)panel.Children[0]).FontSize = compact ? 22 : 28;
+        };
+        return page;
     }
     public static void HideWhenEmpty(TextBlock text)
     {

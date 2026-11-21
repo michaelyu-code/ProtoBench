@@ -34,7 +34,8 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
         }
         if (vm.Kind == CalculatorKind.Base64)
         {
-            var urlSafe = new CheckBox { Content = "URL-safe Base64 (- and _, no output padding)" };
+            var urlSafe = new CheckBox { Content = "URL-safe Base64" };
+            ToolTipService.SetToolTip(urlSafe, "Uses - and _ and omits output padding.");
             urlSafe.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.UrlSafe)), Mode = BindingMode.TwoWay });
             inputs.Children.Add(urlSafe);
         }
@@ -48,16 +49,18 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             inputs.Children.Add(key);
             var checkValue = new TextBox { Header = "Key check value (KCV · 6 hex digits)", IsReadOnly = true };
             checkValue.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.Kcv)), Mode = BindingMode.OneWay });
-            results.Children.Add(checkValue);
+            var kcvPanel = ToolLayout.Stack(checkValue);
             var kcvStatus = Ui.Text("");
             vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Kcv)) kcvStatus.Text = ""; };
-            results.Children.Add(Ui.Row(new Button { Content = "Calculate KCV", Command = vm.CalculateKcvCommand }, Ui.Button("Copy KCV", () =>
+            kcvPanel.Children.Add(Ui.Row(new Button { Content = "Calculate KCV", Command = vm.CalculateKcvCommand }, Ui.Button("Copy KCV", () =>
             {
                 if (vm.Kcv.Length == 0) return;
                 try { var data = new DataPackage(); data.SetText(vm.Kcv); Clipboard.SetContent(data); kcvStatus.Text = "KCV copied"; }
                 catch { kcvStatus.Text = "Clipboard unavailable. Select and copy the KCV manually."; }
             })));
-            results.Children.Add(kcvStatus);
+            kcvPanel.Children.Add(kcvStatus);
+            inputs.Children.Add(new Expander { Header = "Key check value (KCV)", Content = kcvPanel,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
             var iv = Ui.Input(vm, nameof(vm.Iv), "IV (8 bytes, hex)");
             iv.MaxLength = 64;
             void UpdateIv() => iv.Visibility = vm.ShowIv ? Visibility.Visible : Visibility.Collapsed;
@@ -79,12 +82,13 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             UpdateOperand();
             inputs.Children.Add(operand);
         }
-        inputs.Children.Add(Ui.Row(new Button { Content = "Calculate", Command = vm.CalculateCommand }, new Button { Content = "Clear inputs", Command = vm.ClearCommand }));
+        inputs.Children.Add(Ui.Row(Ui.Primary(new Button { Content = "Calculate", Command = vm.CalculateCommand }), new Button { Content = "Clear inputs", Command = vm.ClearCommand }));
         inputs.Children.Add(Ui.BoundText(vm, nameof(vm.Error)));
         inputs.Children.Add(Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
         var output = new RawTextViewer { Header = "Result", MinHeight = 180, MaxHeight = 360, TextWrapping = TextWrapping.Wrap };
         output.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.Output)), Mode = BindingMode.OneWay });
-        results.Children.Add(output);
+        results.Children.Add(vm.Kind == CalculatorKind.Bitwise
+            ? ResultValues.Create(vm, () => vm.Output, "Hex", "Decimal", "Binary") : output);
         var copied = Ui.Text("");
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Output)) copied.Text = ""; };
         results.Children.Add(Ui.Button("Copy result", () =>
@@ -101,7 +105,7 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             _ => "Encrypt, decrypt and check keys locally."
         };
         return ToolLayout.Page(vm.Title, subtitle,
-            ToolLayout.Columns(340, ToolLayout.Section("Inputs", inputs), ToolLayout.Section("Results", results)),
+            ToolLayout.Workspace(vm, ToolLayout.Section("Inputs", inputs), ToolLayout.Section("Results", results), () => vm.Output.Length > 0),
             ToolLayout.Help(Ui.Text(vm.Help)));
     }
 }

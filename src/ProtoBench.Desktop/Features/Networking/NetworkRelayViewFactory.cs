@@ -18,7 +18,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
     {
         var vm = (NetworkRelayWorkspace)workspace;
         var fields = new Dictionary<string, TextBox>();
-        var validationTips = new Dictionary<string, ToolTip>();
+        var validationMessages = new Dictionary<string, TextBlock>();
         var revealConfiguration = () => { };
         var feedback = Ui.Text("");
         feedback.MaxLines = 2; feedback.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -28,19 +28,15 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
             try { var data = new DataPackage(); data.SetText(text); Clipboard.SetContent(data); feedback.Text = "Copied"; }
             catch { feedback.Text = "Clipboard unavailable. Select and copy the data manually."; }
         }
-        TextBox Input(string property, string header, int limit = 253)
+        FrameworkElement Input(string property, string header, int limit = 253)
         {
             var box = Ui.Input(vm, property, header); box.MaxLength = limit;
             fields[property] = box;
-            box.TextChanged += (_, _) =>
-            {
-                if (validationTips.Remove(property, out var tip))
-                {
-                    tip.IsOpen = false;
-                    ToolTipService.SetToolTip(box, null);
-                }
-            };
-            return box;
+            var message = Ui.Text("");
+            message.Foreground = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SystemFillColorCriticalBrush"];
+            validationMessages[property] = message;
+            box.TextChanged += (_, _) => message.Text = "";
+            return ToolLayout.Stack(box, message);
         }
         CheckBox Check(string property, string label)
         {
@@ -99,32 +95,24 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
                 upstream));
         var configHost = new ContentControl { Content = configuration, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         configHost.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
-        var start = new Button { Content = "Start relay" };
+        var start = Ui.Primary(new Button { Content = "Start relay" });
         start.Click += async (_, _) =>
         {
-            foreach (var tip in validationTips.Values) tip.IsOpen = false;
+            foreach (var message in validationMessages.Values) message.Text = "";
             var errors = vm.ValidateConfiguration();
             if (errors.Count > 0)
             {
                 revealConfiguration();
                 if (errors.ContainsKey(nameof(vm.CertificatePath)) || errors.ContainsKey(nameof(vm.CertificateName))) certificateOptions.IsExpanded = true;
-                feedback.Text = string.Join(" ", errors.Values);
-                // Wait for expanded panels to lay out before positioning field popups.
+                feedback.Text = "Check the highlighted connection fields.";
+                foreach (var (property, message) in errors) validationMessages[property].Text = message;
+                // Bring the first invalid field into the expanded configuration.
                 start.DispatcherQueue.TryEnqueue(() =>
                 {
                     var firstField = fields[errors.Keys.First()];
                     firstField.Focus(FocusState.Programmatic);
                     firstField.StartBringIntoView();
-                    foreach (var (property, message) in errors)
-                    {
-                        if (!validationTips.TryGetValue(property, out var tip))
-                        {
-                            tip = new ToolTip { PlacementTarget = fields[property] };
-                            validationTips[property] = tip;
-                            ToolTipService.SetToolTip(fields[property], tip);
-                        }
-                        tip.Content = message; tip.IsOpen = true;
-                    }
+                    validationMessages[errors.Keys.First()].StartBringIntoView();
                 });
                 return;
             }
@@ -137,7 +125,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         stop.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.IsRunning)) });
         var entries = new ListView
         {
-            ItemsSource = vm.Entries, Header = Ui.Text("Traffic", 16), MinHeight = 0, SelectionMode = ListViewSelectionMode.Single,
+            ItemsSource = vm.Entries, Header = Ui.Text("Traffic", 16), MinHeight = 0, SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true,
             ItemTemplate = (DataTemplate)XamlReader.Load("""
                 <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
                     <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,4" />
@@ -151,7 +139,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         entries.SetBinding(ListView.SelectedItemProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.Selected)), Mode = BindingMode.TwoWay });
         RawTextViewer Result(string property, string header)
         {
-            var viewer = new RawTextViewer { Header = header, MinHeight = 0, MaxHeight = double.PositiveInfinity, VerticalAlignment = VerticalAlignment.Stretch, TextWrapping = TextWrapping.Wrap };
+            var viewer = new RawTextViewer { CompactViewport = false, Header = header, MinHeight = 0, MaxHeight = double.PositiveInfinity, VerticalAlignment = VerticalAlignment.Stretch, TextWrapping = TextWrapping.Wrap };
             viewer.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(property), Mode = BindingMode.OneWay });
             return viewer;
         }
@@ -176,16 +164,9 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         encoding.SetBinding(ComboBox.SelectedItemProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.TextEncoding)), Mode = BindingMode.TwoWay });
         var telnet = Check(nameof(vm.TelnetPreview), "Telnet preview");
         ToolTipService.SetToolTip(telnet, "Show readable text by removing Telnet commands, ANSI/VT escape sequences and other control characters. Tabs and line breaks are kept. Uses the selected encoding and retained chunks from this connection and direction. Expand Telnet commands for negotiation details.");
-        var textOptions = new Grid { ColumnSpacing = 12, RowSpacing = 6 };
-        textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        textOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        textOptions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        textOptions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var encodingLabel = Ui.Text("Text encoding");
-        Grid.SetColumnSpan(encodingLabel, 2); textOptions.Children.Add(encodingLabel);
-        Grid.SetRow(encoding, 1); textOptions.Children.Add(encoding);
+        encoding.Header = "Text encoding";
+        var textOptions = ToolLayout.Columns(150, encoding, telnet);
         telnet.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetRow(telnet, 1); Grid.SetColumn(telnet, 1); textOptions.Children.Add(telnet);
         textPane.Children.Add(textOptions);
         var textPreview = InspectPane(nameof(vm.SelectedText), "Text preview (invalid/split characters replaced)", "Copy text", () => vm.SelectedText);
         Grid.SetRow(textPreview, 1); textPane.Children.Add(textPreview);
@@ -225,7 +206,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         var help = Ui.Text("Point the client at the listen IP/port; configure the real server as upstream. Incoming Auto mode peeks without consuming the first byte: 0x16 selects TLS, any other byte selects plain TCP. Auto waits for the client to send first; use Plain TCP for server-first protocols or plain data starting with 0x16. Auto creates a test certificate if none is selected. Export the public certificate and configure client trust and a matching DNS name/IP. Upstream connection can be Plain TCP, TLS or Match incoming. Match incoming mirrors each client's transport and reuses its SNI when available. An explicit SNI override takes priority; otherwise the upstream host is the fallback. The destination host/port remains configured, and each TLS leg negotiates its own version and cipher. Hostname, certificate trust and validity-date checks default on and can be toggled independently. Trust off permits unknown-CA/self-signed chains; validity dates off permits expired/not-yet-valid certificates. Other certificate and TLS checks remain enabled. Connection events record each verification setting. A custom CA applies only to this relay; revocation is not checked. TLS 1.2/1.3 is supported; legacy SSL, STARTTLS, UDP, HTTP CONNECT and mutual TLS are not supported. At most 16 clients and a 30-second setup/first-byte deadline. TCP read chunks are not protocol messages. Hex preserves exact received bytes; text uses the encoding selected on the Text tab (UTF-8 by default). Use Auto scroll to follow new traffic. Retention is 1,024 entries / 4 MiB; eviction does not interrupt forwarding. Export saves retained entries. Closing the tab stops its listener/connections. Windows TLS uses temporary key containers managed by .NET; no trust-store or firewall changes are made. Settings, passwords and traffic are not saved automatically.");
         var helpButton = new Button { Content = "Help" };
         helpButton.Flyout = new Flyout { Content = new ScrollViewer { Content = help, Width = 420, MaxHeight = 360, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } };
-        var toolbar = new AdaptiveColumns { MaximumColumns = 4, MinimumColumnWidth = 85 };
+        var toolbar = new ActionRow();
         toolbar.Children.Add(start); toolbar.Children.Add(stop);
         var exportTestCertificate = Ui.AsyncButton("Test cert…", async () =>
         {
@@ -251,17 +232,14 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var heading = new Grid { ColumnSpacing = 12 };
-        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var heading = new AdaptiveColumns { MinimumColumnWidth = 300 };
         var title = Ui.Text(vm.Title, 20); title.MaxWidth = 160; title.VerticalAlignment = VerticalAlignment.Center;
-        heading.Children.Add(title); Grid.SetColumn(toolbar, 1); heading.Children.Add(toolbar);
+        heading.Children.Add(title); heading.Children.Add(toolbar);
         page.Children.Add(heading);
         Grid.SetRow(connectionPanel, 1); page.Children.Add(connectionPanel);
         page.SizeChanged += (_, _) =>
         {
             configurationScroll.MaxHeight = Math.Max(50, page.ActualHeight * .28);
-            if (page.ActualHeight < 540) connectionPanel.IsExpanded = false;
         };
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.IsRunning) && vm.IsRunning) connectionPanel.IsExpanded = false; };
 
@@ -274,20 +252,36 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         capturePane.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         capturePane.Children.Add(ToolLayout.Stack(summary, Check(nameof(vm.AutoScroll), "Auto scroll")));
         Grid.SetRow(entries, 1); capturePane.Children.Add(entries);
+        var back = Ui.Button("← Traffic", () => { });
+        var inspector = new Grid { RowSpacing = 6 };
+        inspector.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        inspector.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        inspector.Children.Add(back); Grid.SetRow(dataTabs, 1); inspector.Children.Add(dataTabs);
         var panes = new Grid { ColumnSpacing = 12, RowSpacing = 8 };
-        panes.Children.Add(capturePane); panes.Children.Add(dataTabs);
-        bool? beside = null;
+        panes.Children.Add(capturePane); panes.Children.Add(inspector);
+        bool inspecting = false;
         void ReflowPanes()
         {
-            var wide = panes.ActualWidth >= 560;
-            if (beside == wide) return;
-            beside = wide; panes.ColumnDefinitions.Clear(); panes.RowDefinitions.Clear();
-            panes.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            panes.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            if (wide) panes.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            else panes.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            Grid.SetColumn(dataTabs, wide ? 1 : 0); Grid.SetRow(dataTabs, wide ? 0 : 1);
+            var wide = panes.ActualWidth >= 720;
+            if (panes.ColumnDefinitions.Count == 0)
+            {
+                panes.ColumnDefinitions.Add(new ColumnDefinition());
+                panes.ColumnDefinitions.Add(new ColumnDefinition());
+            }
+            panes.ColumnDefinitions[1].Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+            Grid.SetColumn(inspector, wide ? 1 : 0);
+            capturePane.Visibility = wide || !inspecting ? Visibility.Visible : Visibility.Collapsed;
+            inspector.Visibility = wide || inspecting ? Visibility.Visible : Visibility.Collapsed;
+            back.Visibility = wide ? Visibility.Collapsed : Visibility.Visible;
         }
+        back.Click += (_, _) => { inspecting = false; ReflowPanes(); entries.Focus(FocusState.Programmatic); };
+        entries.ItemClick += (_, _) => { inspecting = true; ReflowPanes(); if (back.Visibility == Visibility.Visible) back.Focus(FocusState.Programmatic); };
+        entries.KeyDown += (_, e) =>
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter && vm.Selected is not null)
+            { e.Handled = true; inspecting = true; ReflowPanes(); if (back.Visibility == Visibility.Visible) back.Focus(FocusState.Programmatic); }
+        };
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Selected) && vm.Selected is null) { inspecting = false; ReflowPanes(); } };
         panes.SizeChanged += (_, _) => ReflowPanes();
         traffic.Children.Add(panes);
         var status = Ui.BoundText(vm, nameof(vm.Status)); status.MaxLines = 1; status.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -331,7 +325,7 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
             }
             timer.Start();
         };
-        page.Unloaded += (_, _) => { timer.Stop(); foreach (var tip in validationTips.Values) tip.IsOpen = false; };
+        page.Unloaded += (_, _) => timer.Stop();
         return page;
     }
 }

@@ -66,12 +66,12 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(vm.Output)) copyStatus.Text = ""; };
         UpdateMode();
         return ToolLayout.Page("Base Converter", "Numeric bases, text encodings and EBCDIC CP500.",
-            ToolLayout.Columns(340,
+            ToolLayout.Workspace(vm,
                 ToolLayout.Section("Inputs", mode, numericOptions, encoding, input, removeSpaces,
-                    new Button { Content = "Convert", Command = vm.ConvertCommand }, Ui.BoundText(vm, "Error"),
+                    Ui.Primary(new Button { Content = "Convert", Command = vm.ConvertCommand }), Ui.BoundText(vm, "Error"),
                     Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, "Status"))),
                 ToolLayout.Section("Results", result,
-                    Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } }), copyStatus)),
+                    Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } }), copyStatus), () => vm.Output.Length > 0),
             ToolLayout.Help(help));
     }
 }

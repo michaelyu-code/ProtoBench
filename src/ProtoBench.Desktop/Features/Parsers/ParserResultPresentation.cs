@@ -8,12 +8,14 @@ public sealed record ParserPaneLayout(bool MessagesBeside, double MessageWidth, 
 public sealed class ParserResultPresentation : ObservableObject
 {
     // These are logical pixels, so Windows display scaling is already accounted for.
-    // Keep room for both tab strips, the value/actions and a readable detail viewport.
-    // On short screens the page scrolls instead of compressing the nested content.
+    // Keep one stable viewport across message and field selections. Short detail
+    // panels scroll their complete content instead of increasing the page height.
     public static double DetailHeight(double availableHeight, double headerHeight,
         bool showingDetails = false, bool stackedDetails = false)
     {
-        var minimum = showingDetails ? stackedDetails ? 720 : 560 : 320;
+        // Narrow layouts navigate into details instead of reserving a second
+        // field list above them. The panel scrolls when its header is long.
+        const double minimum = 320;
         return double.IsFinite(availableHeight) && double.IsFinite(headerHeight)
             ? Math.Clamp(availableHeight - Math.Max(0, headerHeight) - 24, minimum, 1000)
             : Math.Max(minimum, 600);
@@ -22,7 +24,7 @@ public sealed class ParserResultPresentation : ObservableObject
     // List length never participates in the shared result row's height.
     public static double MessagePaneHeight(double availableHeight, bool beside, double inspectorHeight) =>
         beside ? Math.Clamp(double.IsFinite(inspectorHeight) ? inspectorHeight : 600, 320, 1400)
-            : Math.Clamp(double.IsFinite(availableHeight) ? availableHeight * 0.4 : 300, 200, 360);
+            : Math.Clamp(double.IsFinite(availableHeight) ? availableHeight : 600, 240, 1000);
 
     private double bodyFontSize = 14, smallFontSize = 12, headingFontSize = 18;
     private double cardGap = 3, cardPadding = 8, fieldGap = 3, fieldPadding = 8, panelGap = 8;

@@ -7,9 +7,9 @@ public sealed class ParserResultPresentationTests
     [Theory]
     [InlineData(1000, true, 980, 980)]
     [InlineData(560, true, 520, 520)]
-    [InlineData(560, false, 520, 224)]
-    [InlineData(2000, false, 1200, 360)]
-    [InlineData(100, false, 400, 200)]
+    [InlineData(560, false, 520, 560)]
+    [InlineData(2000, false, 1200, 1000)]
+    [InlineData(100, false, 400, 240)]
     [InlineData(double.PositiveInfinity, true, double.PositiveInfinity, 600)]
     public void MessageListHasABoundedViewportAndMatchesTheInspectorWhenBeside(double available, bool beside,
         double inspector, double expected)
@@ -29,21 +29,20 @@ public sealed class ParserResultPresentationTests
     }
 
     [Theory]
-    [InlineData(360, 180, false, 560)]
-    [InlineData(560, 180, false, 560)]
-    [InlineData(560, 180, true, 720)]
+    [InlineData(360, 180, false, 320)]
+    [InlineData(560, 180, false, 356)]
+    [InlineData(560, 180, true, 356)]
     [InlineData(1100, 180, false, 896)]
     [InlineData(1100, 180, true, 896)]
-    [InlineData(double.PositiveInfinity, 180, true, 720)]
-    public void OpenDetailsReserveContentSpaceEvenOnScaledLaptopScreens(double height, double header,
+    [InlineData(double.PositiveInfinity, 180, true, 600)]
+    public void OpeningDetailsKeepsTheViewportStableOnScaledLaptopScreens(double height, double header,
         bool stacked, double expected)
     {
         var tabHeight = ParserResultPresentation.DetailHeight(height, header, true, stacked);
         Assert.Equal(expected, tabHeight);
-        // Outer tab strip/margin, stacked field list/gap, detail border, title,
-        // complete value (up to 120), actions and inner tab strip.
-        var contentHeight = tabHeight - 56 - (stacked ? 136 : 0) - 22 - 48 - 120 - 40 - 48;
-        Assert.True(contentHeight >= 200, $"Only {contentHeight} DIPs left for detail content");
+        // Narrow details replace the field list and own a scrolling viewport.
+        // Selecting a field must not grow the page beyond its previous budget.
+        Assert.Equal(ParserResultPresentation.DetailHeight(height, header), tabHeight);
     }
 
     [Fact]

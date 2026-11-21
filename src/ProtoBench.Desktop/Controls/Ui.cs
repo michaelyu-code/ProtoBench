@@ -12,7 +12,7 @@ public static class Ui
         ToolLayout.HideWhenEmpty(block);
         return block;
     }
-    public static TextBlock Heading(string text) => new() { Text = text, FontSize = 28, FontWeight = FontWeights.SemiBold };
+    public static TextBlock Heading(string text) => new() { Text = text, FontSize = 28, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
     public static Button Button(string text, Action action)
     {
         var button = new Button { Content = text };
@@ -25,12 +25,17 @@ public static class Ui
         button.Click += async (_, _) => { button.IsEnabled = false; try { await action(); } catch (Exception ex) { error?.Invoke(ex); } finally { button.IsEnabled = true; } };
         return button;
     }
-    public static StackPanel Row(params UIElement[] elements)
+    public static ActionRow Row(params UIElement[] elements)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        var panel = new ActionRow();
         foreach (var e in elements)
             panel.Children.Add(e);
         return panel;
+    }
+    public static Button Primary(Button button)
+    {
+        button.Style = (Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"];
+        return button;
     }
     public static StackPanel Column(params UIElement[] elements)
     {
