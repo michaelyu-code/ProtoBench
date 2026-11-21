@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using ProtoBench.Core.Networking;
 using System.Net;
 using System.Net.Sockets;
 using ProtoBench.Application.Workspaces;
@@ -13,26 +16,53 @@ public sealed class TestTelnetServerWorkspace : ToolWorkspace
     private bool ansiGreeting = true, disposed;
     private long lastSequence;
     private TestTelnetServer? server;
-    private TelnetServerProfile profile;
-    public TelnetServerProfile Profile
+    private readonly TelnetServerProvider[] providers;
+    public IReadOnlyList<string> ServerProfiles { get; }
+    public TestTelnetServerWorkspace(IEnumerable<TelnetServerProvider>? providers = null)
     {
-        get => profile;
+        this.providers = providers?.ToArray() ?? [];
+        ServerProfiles = new[] { "ASCII Telnet", "ANSI / VT100", "Telserv / TN6530 (conversational simulation)" }
+            .Concat(this.providers.Select(p => p.Name)).ToArray();
+    }
+    private int selectedProfileIndex;
+    public int SelectedProfileIndex
+    {
+        get => selectedProfileIndex;
         set
         {
-            if (SetProperty(ref profile, value))
+            if (value < 0 || value >= ServerProfiles.Count) throw new ArgumentOutOfRangeException(nameof(value));
+            if (SetProperty(ref selectedProfileIndex, value))
             {
-                OnPropertyChanged(nameof(ProfileDescription)); OnPropertyChanged(nameof(ShowAnsiGreeting));
+                OnPropertyChanged(nameof(Profile)); OnPropertyChanged(nameof(ProfileDescription)); OnPropertyChanged(nameof(ShowAnsiGreeting));
             }
         }
     }
-    public bool ShowAnsiGreeting => Profile == TelnetServerProfile.Ascii;
-    public string ProfileDescription => Profile switch
+    public TelnetServerProfile Profile
+    {
+        get => SelectedProfileIndex < 3 ? (TelnetServerProfile)SelectedProfileIndex : TelnetServerProfile.Ascii;
+        set => SelectedProfileIndex = (int)value;
+    }
+    public bool ShowAnsiGreeting => SelectedProfileIndex == 0;
+    public string ProfileDescription => SelectedProfileIndex >= 3 ? providers[SelectedProfileIndex - 3].Description : Profile switch
     {
         TelnetServerProfile.Ascii => "ASCII Telnet with echo, help, time and an optional ANSI sample.",
         TelnetServerProfile.AnsiVt100 => "ANSI/VT100 text session with color and title control samples. Commands: help, echo <text>, ansi, time, quit.",
-        TelnetServerProfile.TelservTn6530 => "Simulated Telserv service menu and TN6530 conversational session. Negotiates terminal type, binary, echo and suppress-go-ahead. Choose TACL, then HELP or SCREEN. No real host commands, authentication or block-mode forms.",
-        _ => "Select a supported server profile."
+        _ => "Simulated Telserv service menu and TN6530 conversational session. Negotiates terminal type, binary, echo and suppress-go-ahead. Choose TACL, then HELP or SCREEN. No real host commands, authentication or block-mode forms."
     };
+    private bool useTls;
+    private string certificatePath = "", certificatePassword = "", certificateHostname = "localhost";
+    public bool UseTls { get => useTls; set => SetProperty(ref useTls, value); }
+    public string CertificatePath { get => certificatePath; set => SetProperty(ref certificatePath, value); }
+    public string CertificatePassword { get => certificatePassword; set => SetProperty(ref certificatePassword, value); }
+    public string CertificateHostname { get => certificateHostname; set => SetProperty(ref certificateHostname, value); }
+    private X509Certificate2? LoadCertificate()
+    {
+        if (!UseTls) return null;
+        if (string.IsNullOrWhiteSpace(CertificatePath)) return RelayTestCertificate.Create(CertificateHostname.Trim());
+        var bytes = File.ReadAllBytes(CertificatePath.Trim());
+        try { return RelayTestCertificate.LoadForTls(bytes, CertificatePassword); }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
     public string ListenAddress { get => listenAddress; set => SetProperty(ref listenAddress, value); }
     public string ListenPort { get => listenPort; set => SetProperty(ref listenPort, value); }
     public bool AnsiGreeting { get => ansiGreeting; set => SetProperty(ref ansiGreeting, value); }
@@ -57,13 +87,15 @@ public sealed class TestTelnetServerWorkspace : ToolWorkspace
         {
             if (!IPAddress.TryParse(ListenAddress.Trim(), out var address)) throw new FormatException("Enter a local listen IP address, such as 127.0.0.1.");
             if (!int.TryParse(ListenPort, out var port) || port is < 0 or > 65535) throw new FormatException("Enter a port between 1 and 65535, or 0 for an automatically assigned port.");
-            server = TestTelnetServer.Start(address, port, AnsiGreeting, Profile);
+            using var certificate = LoadCertificate();
+            server = TestTelnetServer.Start(address, port, AnsiGreeting, Profile, certificate,
+                SelectedProfileIndex >= 3 ? providers[SelectedProfileIndex - 3] : null);
             Endpoint = server.LocalEndpoint.ToString();
             Status = $"Listening on {Endpoint}";
             lastSequence = 0; Activity = "";
             Refresh();
         }
-        catch (Exception ex) when (ex is SocketException or ArgumentException or FormatException)
+        catch (Exception ex) when (ex is SocketException or ArgumentException or FormatException or IOException or UnauthorizedAccessException or CryptographicException)
         {
             Error = ex.Message; Status = "Unable to start server.";
         }

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ProtoBench.Core.Documents;
 using ProtoBench.Core.Fields;
+using ProtoBench.Core.Networking;
 using ProtoBench.Parsing.Abstractions;
 using ProtoBench.PluginSdk;
 
@@ -25,6 +26,24 @@ public sealed class ExamplePlugin : IToolkitPlugin
         })
     ];
     public IEnumerable<IFieldDecoder> FieldDecoders => [new ResponseDecoder()];
+    public IEnumerable<TelnetServerProvider> TelnetServers =>
+    [
+        new("example.byte-echo", "Example byte echo", "Echoes raw bytes for transport testing; no Telnet option negotiation.",
+            () => new ByteEchoSession())
+    ];
+}
+
+public sealed class ByteEchoSession : ITelnetServerSession
+{
+    public async Task RunAsync(ITelnetServerConnection connection, CancellationToken token)
+    {
+        await connection.WriteAsync("Example byte echo\r\n"u8.ToArray(), token);
+        var buffer = new byte[4096];
+        int count;
+        while ((count = await connection.ReadAsync(buffer, token)) > 0)
+            await connection.WriteAsync(buffer.AsMemory(0, count), token);
+    }
+    public void Dispose() { }
 }
 
 public sealed class HashSession : IPluginToolSession

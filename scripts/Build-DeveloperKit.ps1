@@ -11,6 +11,9 @@ param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/developer-kit'),
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [switch]$SelfContainedApp,
+    [switch]$InstallerSupport,
+    [switch]$EnableUpdates,
+    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$GitHubRepository = 'michaelyu-code/ProtoBench',
     [ValidatePattern('^$|^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')][string]$Version = '',
     [switch]$SkipApp,
     [switch]$NoZip
@@ -60,8 +63,14 @@ try {
         Write-Host 'Building SDKs and publishing the Windows x64 test app…'
         $publishArguments = @('publish', 'src/ProtoBench.Desktop/ProtoBench.Desktop.csproj', '-c', $Configuration,
             '-r', 'win-x64', '--self-contained', $SelfContainedApp.IsPresent.ToString().ToLowerInvariant(), '-p:Platform=x64',
-            '-p:UpdatesEnabled=false', '-o', (Join-Path $staging 'app'), '--nologo')
+            "-p:UpdatesEnabled=$($EnableUpdates.IsPresent.ToString().ToLowerInvariant())", '-o', (Join-Path $staging 'app'), '--nologo')
+        if ($EnableUpdates) {
+            $repoUrl = "https://github.com/$GitHubRepository"
+            $publishArguments += @("-p:UpdateFeedUrl=$repoUrl", "-p:UpdateDownloadPageUrl=$repoUrl/releases/latest",
+                "-p:UpdateManifestUrl=$repoUrl/releases/latest/download/latest.json")
+        }
         if ($Version) { $publishArguments += @("-p:Version=$Version", '-p:AssemblyVersion=2.0.0.0') }
+        $publishArguments += "-p:InstallerEnabled=$($InstallerSupport.IsPresent.ToString().ToLowerInvariant())"
         Invoke-DotNet -Arguments $publishArguments
         # Unpackaged WinUI publish can omit compiled XAML resources even though the build output runs.
         # Include them explicitly so the standalone kit app can initialize App.xaml and its views.
@@ -160,7 +169,7 @@ try {
         'PluginSdk/PluginContracts.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
         'Parsing/Abstractions/ILogParser.cs', 'Parsing/Abstractions/IStreamingLogParser.cs', 'Parsing/Abstractions/IFieldDecoder.cs',
         'Generation/Abstractions/IFileGenerator.cs', 'Core/Fields/ParsedField.cs',
-        'Core/Documents/ParseResult.cs', 'Core/Diagnostics/ParseDiagnostic.cs'
+        'Core/Documents/ParseResult.cs', 'Core/Diagnostics/ParseDiagnostic.cs', 'Core/Networking/TelnetServerProvider.cs'
     )) {
         $target = Join-Path $staging ('contracts/' + $source)
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force

@@ -35,6 +35,13 @@ public sealed class MainWindow : Window
     };
     private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.SizeToContent, VerticalAlignment = VerticalAlignment.Stretch };
     private readonly InfoBar notification = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
+    private readonly InfoBar updateNotification = new() { IsClosable = true, Severity = InfoBarSeverity.Informational, Title = "Update available" };
+    private Task<UpdateRelease?>? startupUpdateCheck;
+    private UpdateRelease? availableUpdate;
+    private bool hasUpdateCheckResult;
+    private Action<UpdateRelease?>? updatePanelResult;
+    private FrameworkElement? updatePanel;
+    private bool startupCheckStarted, windowClosed;
     private readonly Grid root = new();
     private readonly DashboardView dashboard;
     private readonly TabViewItem homeTab;
@@ -58,21 +65,33 @@ public sealed class MainWindow : Window
         this.pluginCatalog = pluginCatalog;
         this.files = files;
         Title = "ProtoBench";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "ProtoBench.ico"));
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1320, 900));
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
         root.Children.Add(header);
         Grid.SetRow(notification, 1);
         root.Children.Add(notification);
-        Grid.SetRow(navigation, 2);
+        Grid.SetRow(updateNotification, 2);
+        root.Children.Add(updateNotification);
+        var viewUpdate = new Button { Content = "View update" };
+        viewUpdate.Click += (_, _) => ShowUpdateSettings();
+        updateNotification.ActionButton = viewUpdate;
+        Grid.SetRow(navigation, 3);
         root.Children.Add(navigation);
         Content = root;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(header.Bar);
         header.Bar.PaneToggleRequested += (_, _) => navigation.IsPaneOpen = !navigation.IsPaneOpen;
         root.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
-        root.Loaded += (_, _) => UpdateTitleBarColors();
+        root.Loaded += async (_, _) =>
+        {
+            UpdateTitleBarColors();
+            await CheckForUpdatesAtStartupAsync();
+        };
+        Closed += (_, _) => windowClosed = true;
         UpdateTitleBarColors();
 
         dashboard = new DashboardView(vm, (id, createNew) => Open(id, createNew), OpenRecentAsync, Report);
@@ -141,7 +160,11 @@ public sealed class MainWindow : Window
             if (args.Tab.Tag is ToolWorkspace workspace)
                 vm.Workspaces.Close(workspace);
             if (args.Tab == settingsTab)
+            {
                 settingsTab = null;
+                updatePanelResult = null;
+                updatePanel = null;
+            }
             if (args.Tab == pickerTab)
                 pickerTab = null;
             tabs.TabItems.Remove(args.Tab);
@@ -151,6 +174,28 @@ public sealed class MainWindow : Window
         tabs.SelectionChanged += (_, _) => SyncNavigation();
         vm.Settings.Changed += () => { ApplyTheme(); dashboard.Refresh(); };
         navigation.SelectedItem = home;
+    }
+
+    private async Task CheckForUpdatesAtStartupAsync()
+    {
+        if (startupCheckStarted || !updates.Enabled) return;
+        startupCheckStarted = true;
+        try
+        {
+            startupUpdateCheck = updates.CheckOnStartupAsync();
+            var release = await startupUpdateCheck;
+            availableUpdate = release;
+            hasUpdateCheckResult = true;
+            if (windowClosed) return;
+            updatePanelResult?.Invoke(release);
+            if (release is null) return;
+            updateNotification.Message = $"ProtoBench {release.Version} is available to download.";
+            updateNotification.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            if (!windowClosed) logger.LogWarning(new EventId(107), ex, "Startup update check failed");
+        }
     }
 
     public async void InitializeAsync(IReadOnlyList<string> diagnostics)
@@ -300,6 +345,23 @@ public sealed class MainWindow : Window
         catch (Exception ex) { Report(ex); return null; }
     }
 
+    private void ShowUpdateSettings()
+    {
+        ShowSettings();
+        if (updatePanel is not { } panel) return;
+        if (panel.IsLoaded) panel.StartBringIntoView();
+        else
+        {
+            RoutedEventHandler? bringIntoView = null;
+            bringIntoView = (_, _) =>
+            {
+                panel.Loaded -= bringIntoView;
+                panel.StartBringIntoView();
+            };
+            panel.Loaded += bringIntoView;
+        }
+    }
+
     private void ShowSettings()
     {
         if (settingsTab is not null)
@@ -378,11 +440,29 @@ public sealed class MainWindow : Window
                     Ui.Text("Put schema-version 1 JSON files in definitions/parsers or definitions/generators under this directory, then restart. Give customized definitions unique IDs. Bundled defaults remain separate."),
                     Ui.Text("Log Parser streams files and clipboard text into a temporary disk index. Search covers the full indexed log, with 2,000 messages per page by default. Individual oversized records are skipped with diagnostics; regex execution is limited to 100 ms per operation. Legacy parser plugins need the streaming API for inputs above 16 MiB."),
                     Ui.Text("Local error logs include exception types, error codes and method stack traces. Exception messages, record contents and file paths are excluded."),
+                    ToolLayout.Section("Remove local data",
+                        Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
+                        Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report)),
                     CreatePluginPanel(), CreateUpdatePanel())
             }
         };
         tabs.TabItems.Add(settingsTab);
         tabs.SelectedItem = settingsTab;
+    }
+
+    private async Task RemoveLocalDataAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = root.XamlRoot, Title = "Remove all ProtoBench local data?",
+            Content = "This permanently deletes settings, favorites, recent-file history, installed plugins, custom definitions and logs from:\n\n" +
+                ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory +
+                "\n\nProtoBench will close and running operations will stop. Unsaved workspace inputs will be lost. The app stays installed. Saved files outside this folder are kept. This cannot be undone.",
+            PrimaryButtonText = "Remove data and close", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        LocalDataRemoval.StartAfterExit();
+        Close();
     }
 
     private async Task ReloadAppAsync()
@@ -463,6 +543,7 @@ public sealed class MainWindow : Window
     private UIElement CreateUpdatePanel()
     {
         var panel = new StackPanel { Spacing = 12, Visibility = updates.Enabled ? Visibility.Visible : Visibility.Collapsed };
+        updatePanel = panel;
         if (!updates.Enabled) return panel;
         panel.Children.Add(Ui.Heading("Updates"));
         panel.Children.Add(Ui.Text($"Current version: {updates.CurrentVersion}"));
@@ -476,20 +557,32 @@ public sealed class MainWindow : Window
             if (!await Windows.System.Launcher.LaunchUriAsync(updates.DownloadPage))
                 throw new InvalidOperationException("The download page could not be opened.");
         }, ex => status.Text = ex.Message);
+        void DisplayRelease(UpdateRelease? release)
+        {
+            availableUpdate = release;
+            hasUpdateCheckResult = true;
+            status.Text = release is null ? "You are up to date." : release.CanInstall
+                ? $"Version {release.Version} is available."
+                : $"Version {release.Version} is available. Open the download page to download and replace this portable copy.";
+            notes.Text = release?.ReleaseNotes ?? "";
+            install.Content = "Download update";
+            install.Visibility = release?.CanInstall == true ? Visibility.Visible : Visibility.Collapsed;
+            if (release is null) updateNotification.IsOpen = false;
+        }
+        if (hasUpdateCheckResult) DisplayRelease(availableUpdate);
+        updatePanelResult = release => { if (check.IsEnabled && !ready) DisplayRelease(release); };
         check.Click += async (_, _) =>
         {
             check.IsEnabled = false;
             install.Visibility = Visibility.Collapsed;
             ready = false;
+            hasUpdateCheckResult = false;
             notes.Text = "";
             status.Text = "Checking for updates…";
             try
             {
-                var release = await updates.CheckAsync();
-                status.Text = release is null ? "You are up to date." : $"Version {release.Version} is available.";
-                notes.Text = release?.ReleaseNotes ?? "";
-                install.Content = "Download update";
-                install.Visibility = release?.CanInstall == true ? Visibility.Visible : Visibility.Collapsed;
+                var release = await (startupUpdateCheck is { IsCompleted: false } ? startupUpdateCheck : updates.CheckAsync());
+                DisplayRelease(release);
             }
             catch { status.Text = "Could not check for updates. Try again or open the download page."; }
             finally { check.IsEnabled = true; }

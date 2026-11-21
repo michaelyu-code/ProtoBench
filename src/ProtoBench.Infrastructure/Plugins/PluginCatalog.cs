@@ -1,3 +1,4 @@
+using ProtoBench.Core.Networking;
 using ProtoBench.Generation.Abstractions;
 using ProtoBench.Parsing.Abstractions;
 using ProtoBench.PluginSdk;
@@ -6,7 +7,10 @@ namespace ProtoBench.Infrastructure.Plugins;
 
 public sealed record LoadedPlugin(PluginManifest Manifest, string Directory, IToolkitPlugin Instance,
     IReadOnlyList<PluginTool> Tools, IReadOnlyList<ILogParser> Parsers,
-    IReadOnlyList<IFileGenerator> Generators, IReadOnlyList<IFieldDecoder> FieldDecoders);
+    IReadOnlyList<IFileGenerator> Generators, IReadOnlyList<IFieldDecoder> FieldDecoders)
+{
+    public IReadOnlyList<TelnetServerProvider> TelnetServers { get; init; } = [];
+}
 
 public sealed class PluginCatalog : IDisposable
 {
@@ -24,6 +28,7 @@ public sealed class PluginCatalog : IDisposable
         var parsers = new HashSet<string>(parserIds, StringComparer.OrdinalIgnoreCase);
         var generators = new HashSet<string>(generatorIds, StringComparer.OrdinalIgnoreCase);
         var decoders = new HashSet<string>(["emvEntries"], StringComparer.Ordinal);
+        var servers = new HashSet<string>(["builtin.ascii", "builtin.ansi-vt100", "builtin.telserv-tn6530"], StringComparer.OrdinalIgnoreCase);
         foreach (var installed in packages.Installed())
         {
             if (installed.Error is { } error) { catalog.diagnostics.Add($"{Path.GetFileName(installed.Directory)}: {error}"); continue; }
@@ -47,7 +52,11 @@ public sealed class PluginCatalog : IDisposable
                     throw new InvalidDataException("Entry type must be a public IToolkitPlugin with a parameterless constructor.");
                 instance = (IToolkitPlugin)Activator.CreateInstance(type)!;
                 var plugin = new LoadedPlugin(manifest, installed.Directory, instance,
-                    instance.Tools.ToArray(), instance.Parsers.Select(p => (ILogParser)new PluginLogParser(p)).ToArray(), instance.Generators.ToArray(), instance.FieldDecoders.ToArray());
+                    instance.Tools.ToArray(), instance.Parsers.Select(p => (ILogParser)new PluginLogParser(p)).ToArray(), instance.Generators.ToArray(), instance.FieldDecoders.ToArray()) { TelnetServers = instance.TelnetServers.ToArray() };
+                foreach (var server in plugin.TelnetServers)
+                    if (string.IsNullOrWhiteSpace(server.Name) || server.Description is null || server.CreateSession is null)
+                        throw new InvalidDataException("Invalid Telnet server definition.");
+                ValidateIds(plugin.TelnetServers.Select(s => s.Id), servers, "Telnet server");
                 foreach (var tool in plugin.Tools) ValidateTool(tool);
                 ValidateIds(plugin.Tools.Select(t => t.Id), tools, "tool");
                 ValidateIds(plugin.Parsers.Select(p => p.FormatId), parsers, "parser");
@@ -58,6 +67,7 @@ public sealed class PluginCatalog : IDisposable
                 parsers.UnionWith(plugin.Parsers.Select(p => p.FormatId));
                 generators.UnionWith(plugin.Generators.Select(g => g.GeneratorId));
                 decoders.UnionWith(plugin.FieldDecoders.Select(d => d.Id));
+                servers.UnionWith(plugin.TelnetServers.Select(s => s.Id));
                 catalog.plugins.Add(plugin);
                 catalog.contexts.Add(context);
                 instance = null;

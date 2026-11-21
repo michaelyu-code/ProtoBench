@@ -107,7 +107,7 @@ public sealed class NetworkRelayWorkspaceTests
         await workspace.StartAsync();
         Assert.False(workspace.IsRunning); Assert.True(workspace.CanConfigure); Assert.NotEmpty(workspace.Error);
         workspace.CreateTestCertificate();
-        Assert.True(workspace.IncomingTls); Assert.Contains("SHA-256", workspace.CertificateInfo);
+        Assert.True(workspace.AutoDetectIncomingTls); Assert.Contains("SHA-256", workspace.CertificateInfo);
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".pem");
         try
         {
@@ -136,8 +136,8 @@ public sealed class NetworkRelayWorkspaceTests
         {
             await workspace.StartAsync(); Assert.True(workspace.IsRunning); Assert.False(workspace.CanConfigure);
             using var client = new TcpClient(); await client.ConnectAsync(IPAddress.Loopback, port, token);
-            using var server = await upstream.AcceptTcpClientAsync(token);
             await client.GetStream().WriteAsync(new byte[] { 0, 255, 65, 66 }, token);
+            using var server = await upstream.AcceptTcpClientAsync(token);
             var received = new byte[4]; await server.GetStream().ReadExactlyAsync(received, token);
             workspace.RefreshCapture();
             workspace.Selected = Assert.Single(workspace.Entries, e => e.Direction == ProtoBench.Utilities.Networking.RelayDirection.ClientToServer);
@@ -216,16 +216,17 @@ public sealed class NetworkRelayWorkspaceTests
     public void UpstreamMatchAndHostnameOptionsHaveClearIndependentDefaults()
     {
         using var workspace = new NetworkRelayWorkspace(new AtomicFileWriter());
-        Assert.True(workspace.VerifyUpstreamHostname); Assert.Equal(0, workspace.UpstreamMode);
-        Assert.True(workspace.VerifyUpstreamCertificateTrust); Assert.True(workspace.VerifyUpstreamCertificateValidity);
-        workspace.VerifyUpstreamCertificateTrust = false;
-        Assert.True(workspace.VerifyUpstreamCertificateValidity); Assert.True(workspace.VerifyUpstreamHostname);
-        workspace.VerifyUpstreamCertificateValidity = false;
-        workspace.UpstreamMode = 2; Assert.True(workspace.MatchIncomingTls); Assert.False(workspace.UpstreamTls);
-        workspace.VerifyUpstreamHostname = false;
-        workspace.UpstreamMode = 1; Assert.True(workspace.UpstreamTls); Assert.False(workspace.MatchIncomingTls);
+        Assert.Equal(2, workspace.IncomingMode); Assert.True(workspace.AutoDetectIncomingTls); Assert.False(workspace.IncomingTls);
+        Assert.Equal(2, workspace.UpstreamMode); Assert.True(workspace.MatchIncomingTls); Assert.False(workspace.UpstreamTls);
         Assert.False(workspace.VerifyUpstreamHostname);
         Assert.False(workspace.VerifyUpstreamCertificateTrust); Assert.False(workspace.VerifyUpstreamCertificateValidity);
+        workspace.VerifyUpstreamCertificateTrust = true;
+        Assert.False(workspace.VerifyUpstreamCertificateValidity); Assert.False(workspace.VerifyUpstreamHostname);
+        workspace.VerifyUpstreamCertificateValidity = true;
+        workspace.VerifyUpstreamHostname = true;
+        workspace.UpstreamMode = 1; Assert.True(workspace.UpstreamTls); Assert.False(workspace.MatchIncomingTls);
+        Assert.True(workspace.VerifyUpstreamHostname);
+        Assert.True(workspace.VerifyUpstreamCertificateTrust); Assert.True(workspace.VerifyUpstreamCertificateValidity);
         workspace.UpstreamMode = 0; Assert.False(workspace.UpstreamTls); Assert.False(workspace.MatchIncomingTls);
     }
 }

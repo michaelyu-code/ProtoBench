@@ -18,9 +18,9 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
     private string listenAddress = "127.0.0.1", listenPort = "9000", upstreamHost = "", upstreamPort = "", tlsServerName = "";
     private string certificatePath = "", certificatePassword = "", certificateName = "localhost", upstreamRootPath = "";
     private string certificateInfo = "No incoming TLS certificate selected.", summary = "No captured traffic.", error = "";
-    private bool incomingTls, autoDetectIncomingTls, upstreamTls, matchIncomingTls, running, disposed;
-    private bool verifyUpstreamHostname = true;
-    private bool verifyUpstreamCertificateTrust = true, verifyUpstreamCertificateValidity = true;
+    private bool incomingTls, autoDetectIncomingTls = true, upstreamTls, matchIncomingTls = true, running, disposed;
+    private bool verifyUpstreamHostname;
+    private bool verifyUpstreamCertificateTrust, verifyUpstreamCertificateValidity;
     private long lastSequence;
     private RelayCaptureEntry? selected;
     private bool autoScroll = true;

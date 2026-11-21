@@ -95,7 +95,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<NetworkRelayWorkspace>("network-relay", sp));
         collection.AddSingleton<IWorkspaceViewFactory, NetworkRelayViewFactory>();
         collection.AddSingleton(new ToolDescriptor("test-telnet-server", "Test Telnet Server", "Start an ASCII, ANSI/VT100 or simulated Telserv/TN6530 test server for terminal clients and relay testing.", ToolCategory.Utilities, "\uE968"));
-        collection.AddTransient<TestTelnetServerWorkspace>();
+        collection.AddTransient(sp => new TestTelnetServerWorkspace(sp.GetRequiredService<PluginCatalog>().Plugins.SelectMany(p => p.TelnetServers)));
         collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TestTelnetServerWorkspace>("test-telnet-server", sp));
         collection.AddSingleton<IWorkspaceViewFactory, TestTelnetServerViewFactory>();
         var packages = new PluginPackageManager(Path.Combine(AppPaths.UserDirectory, "plugins"));

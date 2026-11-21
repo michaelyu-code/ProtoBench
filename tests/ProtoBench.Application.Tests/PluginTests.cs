@@ -15,10 +15,10 @@ public sealed class PluginTests : IDisposable
     private PluginPackageManager Packages => new(Path.Combine(directory, "installed"));
     public PluginTests() => Directory.CreateDirectory(directory);
 
-    private string MakePackage(string? extraPath = null, int api = PluginApi.Version)
+    private string MakePackage(string? extraPath = null, int api = PluginApi.Version, string id = "example.toolkit")
     {
         var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".nstplugin");
-        var manifest = new PluginManifest(1, api, "example.toolkit", "Example", "1.0.0", "ExamplePlugin.dll", "ExamplePlugin.ExamplePlugin", ["ExamplePlugin.dll"]);
+        var manifest = new PluginManifest(1, api, id, "Example", "1.0.0", "ExamplePlugin.dll", "ExamplePlugin.ExamplePlugin", ["ExamplePlugin.dll"]);
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
         using (var writer = new StreamWriter(archive.CreateEntry("plugin.json").Open())) writer.Write(JsonSerializer.Serialize(manifest));
         archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "ExamplePlugin.dll"), "ExamplePlugin.dll");
@@ -36,6 +36,23 @@ public sealed class PluginTests : IDisposable
         var plugin = Assert.Single(catalog.Plugins);
         Assert.NotEqual(System.Runtime.Loader.AssemblyLoadContext.Default,
             System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(plugin.Instance.GetType().Assembly));
+        var serverProvider = Assert.Single(plugin.TelnetServers);
+        Assert.Equal("example.byte-echo", serverProvider.Id);
+        using (var serverWorkspace = new ProtoBench.Desktop.Features.Networking.TestTelnetServerWorkspace(plugin.TelnetServers) { ListenPort = "0", SelectedProfileIndex = 3 })
+        {
+            Assert.Equal("Example byte echo", serverWorkspace.ServerProfiles[3]);
+            Assert.False(serverWorkspace.ShowAnsiGreeting);
+            Assert.Contains("raw bytes", serverWorkspace.ProfileDescription);
+            serverWorkspace.Start();
+            Assert.True(serverWorkspace.IsRunning);
+            using var client = new System.Net.Sockets.TcpClient();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await client.ConnectAsync(System.Net.IPEndPoint.Parse(serverWorkspace.Endpoint), timeout.Token);
+            var greeting = new byte[19];
+            await client.GetStream().ReadExactlyAsync(greeting, timeout.Token);
+            Assert.Equal("Example byte echo\r\n", Encoding.ASCII.GetString(greeting));
+            await serverWorkspace.StopAsync();
+        }
         using var workspace = new PluginToolWorkspace(Assert.Single(plugin.Tools));
         workspace.Inputs["text"] = "abc";
         await workspace.ExecuteAsync();
@@ -67,6 +84,18 @@ public sealed class PluginTests : IDisposable
         Assert.Contains(without.Records[0].Findings, f => f.RuleId == "decode.unavailable");
         Assert.Equal("00", without.Records[0].Fields.Single(f => f.DataElement == "39").Value);
         Assert.Null(without.Records[0].Fields.Single(f => f.DataElement == "39").Specification);
+    }
+
+    [Fact]
+    public void DuplicateServerProvidersRejectSecondPackageAtomically()
+    {
+        var packages = Packages;
+        packages.Import(MakePackage());
+        packages.Import(MakePackage(id: "other.toolkit"));
+        using var catalog = PluginCatalog.Load(packages, [], [], []);
+        Assert.Single(catalog.Plugins);
+        Assert.Single(catalog.Plugins[0].TelnetServers);
+        Assert.Contains(catalog.Diagnostics, d => d.Contains("conflicting Telnet server ID"));
     }
 
     [Fact]

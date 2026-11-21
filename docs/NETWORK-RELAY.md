@@ -2,6 +2,8 @@
 
 Open **Utilities → TCP / TLS Relay**. The client must connect directly to the relay's listening address; the relay forwards to the upstream endpoint you configure. This is a raw TCP inspection proxy and does not change routing, DNS, firewall rules or machine trust settings.
 
+New relay tabs default to **Incoming connection: Auto**, **Upstream connection: Match incoming**, and all three upstream verification checkboxes unchecked. Auto mode creates an incoming test certificate when needed and waits for the client to send data before connecting upstream. For server-first protocols such as Telnet, select Plain TCP or TLS explicitly if the client waits for a greeting before sending anything.
+
 ## Plain TCP
 
 For a server at `10.0.0.20:5000`, set:
@@ -25,7 +27,7 @@ For a local test endpoint, see the separate **Test Telnet Server** utility below
 2. Click **Create test certificate**. This selects incoming TLS (or preserves Auto mode) and creates a self-signed RSA-2048 server certificate valid for 30 days.
 3. Click **Export public test certificate…** and configure your test client to trust that certificate explicitly. Use its matching hostname/IP to connect. The export contains no private key. Clients with certificate pinning need a corresponding test configuration.
 4. Set **Upstream connection** to **TLS** if the real server always expects TLS from connection start, or **Match incoming** to mirror each client's plain/TLS transport. For an IP connection with a DNS-named certificate, set **TLS server name / SNI override** to the certificate's DNS name, or let Match incoming reuse the client's SNI.
-5. Upstream hostname, certificate trust and validity-date checks are all enabled by default and have independent toggles. **RemoteCertificateNameMismatch** means the checked name does not match the certificate. Keep **Upstream host / IP** as the connection address and set the SNI override to a DNS name or IP in the server certificate's Subject Alternative Name. The error details show the checked name and server subject/SAN. The relay's own test certificate is for incoming connections. For a private/self-signed upstream, select its trusted root (or explicitly trusted self-signed server certificate) under **Upstream TLS options**, or disable certificate trust verification for this relay. With a custom CA selected, system roots are not used. Revocation is not checked. See the verification toggles below.
+5. Upstream hostname, certificate trust and validity-date checks are all disabled by default and have independent toggles. When hostname verification is enabled, **RemoteCertificateNameMismatch** means the checked name does not match the certificate. Keep **Upstream host / IP** as the connection address and set the SNI override to a DNS name or IP in the server certificate's Subject Alternative Name. The error details show the checked name and server subject/SAN. The relay's own test certificate is for incoming connections. For a private/self-signed upstream with trust verification enabled, select its trusted root (or explicitly trusted self-signed server certificate) under **Upstream TLS options**. With a custom CA selected, system roots are not used. Revocation is not checked. See the verification toggles below.
 6. Start the relay and connect your client to its listen IP/port. Captures contain decrypted application bytes in both directions.
 
 Alternatively, browse to an existing PFX/P12 with a server certificate and private key, then enter its password. On Windows, TLS certificates use temporary user private-key containers because Schannel cannot use memory-only ephemeral keys. The app does not set `PersistKeySet`; .NET manages container cleanup when the associated native handles are released. Cleanup may be deferred by TLS credential caching or interrupted by forced termination. Test certificates are not retained for reuse after the tab closes, and no certificates are installed in a trusted store.
@@ -34,13 +36,17 @@ Alternatively, browse to an existing PFX/P12 with a server certificate and priva
 
 ### Separate test Telnet server
 
+Enable **Use TLS** for immediate TLS connections (no STARTTLS). Supply a PFX path and password, or leave the path empty to generate a temporary self-signed test certificate for the specified hostname/IP. The generated certificate is not installed in a trust store; clients must explicitly allow it or trust it for testing. TLS negotiation has a 30-second deadline. All built-in and plugin profiles support TLS. Match the relay's upstream mode to the server: Plain TCP or TLS. For a generated certificate, adjust upstream certificate trust for testing.
+
+Plugins can export additional profiles into the same **Server profile** selector; see [Telnet server profiles](PLUGINS.md#telnet-server-profiles).
+
 Open **Utilities → Test Telnet Server** in its own tab and click **Start server**. It defaults to `127.0.0.1:2323`; choose port `0` to let Windows assign a free port. The **Server endpoint** field shows the actual address and port, with a copy action. Listen settings are locked while the server is running. Connection activity is shown in the utility, with up to 200 recent entries and cumulative sent/received byte totals.
 
 To inspect its traffic through the relay:
 
 1. Start the test server and note its actual port.
 2. In a separate **TCP / TLS Relay** tab, use listen endpoint `127.0.0.1:9000` and upstream host `127.0.0.1` with the test server's port (normally `2323`). The relay and server need different listen ports.
-3. Set incoming and upstream connections to **Plain TCP**, then start the relay. The test server sends its greeting first; incoming Auto mode waits for client data before connecting upstream.
+3. For the default plain server, set incoming and upstream connections to **Plain TCP**, then start the relay. For a TLS server, choose **TLS** upstream; choose the incoming mode to match your client. The test server sends its greeting first; incoming Auto mode waits for client data before connecting upstream.
 4. Connect a Telnet client to `127.0.0.1:9000`. Select a captured entry and enable **Telnet preview** on its Text tab to view cleaned ASCII text. If binding the server to a wildcard IP, use a concrete address such as `127.0.0.1` or `::1` for the relay's upstream host.
 
 Select a **Server profile** before starting:
@@ -51,13 +57,13 @@ Select a **Server profile** before starting:
 | ANSI / VT100 | The same line commands, with ANSI color and OSC title samples always included in the greeting. |
 | Telserv / TN6530 (conversational simulation) | A NonStop-style service menu with simulated TACL and echo services, terminal-type negotiation, and 6530 clear/home/unlock screen samples. |
 
-All profiles use plain TCP and require no login. The ASCII and ANSI profiles announce suppress-go-ahead and leave character echo to the client. The TN6530 profile offers BINARY, ECHO and SUPPRESS-GO-AHEAD, and requests BINARY, SUPPRESS-GO-AHEAD and TERMINAL-TYPE. After the client accepts TERMINAL-TYPE, the server sends TERMINAL-TYPE SEND and reads its IS response according to [RFC 1091](https://www.rfc-editor.org/rfc/rfc1091.txt). It recognizes `TN6530`, `TN653X`, `6530`, `653X` and `TN6530-8`. Other terminal types, or clients declining terminal type, receive a text-only conversational menu. Negotiation has a 30-second deadline. Unsupported options are declined.
+Built-in profiles support plain TCP or TLS and require no login. The ASCII and ANSI profiles announce suppress-go-ahead and leave character echo to the client. The TN6530 profile offers BINARY, ECHO and SUPPRESS-GO-AHEAD, and requests BINARY, SUPPRESS-GO-AHEAD and TERMINAL-TYPE. After the client accepts TERMINAL-TYPE, the server sends TERMINAL-TYPE SEND and reads its IS response according to [RFC 1091](https://www.rfc-editor.org/rfc/rfc1091.txt). It recognizes `TN6530`, `TN653X`, `6530`, `653X` and `TN6530-8`. Other terminal types, or clients declining terminal type, receive a text-only conversational menu. Negotiation has a 30-second deadline. Unsupported options are declined.
 
 At the simulated Telserv menu, choose `TACL`, `ECHO` or `EXIT`. TACL offers `HELP`, `STATUS`, `TIME`, `VOLUME`, `FILES`, `ECHO <text>`, `SCREEN` and `LOGOFF`. The volume and files are synthetic examples; commands do not execute programs or access host files. `SCREEN` sends a 6530 conversational sample using Esc I (clear), Esc H (home) and Esc b (unlock), as specified in the [6530 Programmer's Guide](https://orion.squeakysand.uk/3270/c02118581.pdf). `LOGOFF` returns to the service menu; `EXIT` there disconnects. The echo service repeats input and accepts `LOGOFF` to return to the menu. Echo is sent by the TN6530 server when the client accepts its ECHO offer.
 
-This is an ASCII conversational simulator for testing clients and relay traffic. It is not an HPE Telserv installation or a TACL interpreter. Block-mode forms, function-key/application protocols, full terminal emulation, TLS and authentication are not implemented. The relay's cleaned text preview handles the clear/home/unlock sequences used by these samples; Hex and capture exports retain their exact bytes.
+This is an ASCII conversational simulator for testing clients and relay traffic. It is not an HPE Telserv installation or a TACL interpreter. Block-mode forms, function-key/application protocols, full terminal emulation and authentication are not implemented. The relay's cleaned text preview handles the clear/home/unlock sequences used by these samples; Hex and capture exports retain their exact bytes.
 
-Up to 8 clients can connect independently. Lines are capped at 1,024 characters; an overlong line closes that session. CR/LF, CR/NUL and LF line endings are accepted, with basic backspace/delete editing. Clients idle for 5 minutes are disconnected. **Stop server** or closing its tab releases its listener and client connections. The server runs independently of the relay and remains active while its tab is open, including when another utility is selected. Activity is kept in memory only and is bounded to 1,024 entries / 4 MiB. **Clear activity** clears retained entries while byte totals remain cumulative for the run.
+Up to 8 clients can connect independently. Built-in profile lines are capped at 1,024 characters; an overlong line closes that session. CR/LF, CR/NUL and LF line endings are accepted, with basic backspace/delete editing. Clients idle for 5 minutes are disconnected. **Stop server** or closing its tab releases its listener and client connections. The server runs independently of the relay and remains active while its tab is open, including when another utility is selected. Activity is kept in memory only and is bounded to 1,024 entries / 4 MiB. **Clear activity** clears retained entries while byte totals remain cumulative for the run.
 
 ### Relay traffic
 
@@ -91,7 +97,7 @@ Use **Incoming connection → Auto** and **Upstream connection → Match incomin
 
 ## Verify upstream hostname
 
-Three independent upstream checkboxes default to checked:
+Three independent upstream checkboxes default to unchecked:
 
 | Option | When unchecked |
 | --- | --- |

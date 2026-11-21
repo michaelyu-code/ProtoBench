@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using Velopack;
+using Velopack.Sources;
 
 namespace ProtoBench.Infrastructure.Updates;
 
@@ -19,8 +20,15 @@ public sealed class UpdateService(UpdateOptions options, string currentVersion, 
     private IInstalledUpdater? updater;
     private bool downloaded;
     private bool canInstall;
+    private readonly object startupCheckLock = new();
+    private Task<UpdateRelease?>? startupCheck;
     public bool Enabled => options.Enabled;
     public string CurrentVersion => currentVersion;
+    public Task<UpdateRelease?> CheckOnStartupAsync()
+    {
+        lock (startupCheckLock)
+            return startupCheck ??= Enabled ? CheckAsync() : Task.FromResult<UpdateRelease?>(null);
+    }
     public Uri DownloadPage
     {
         get { options.EnsureEnabled(); return new Uri(options.DownloadPageUrl); }
@@ -66,7 +74,22 @@ public sealed class UpdateService(UpdateOptions options, string currentVersion, 
 
 public sealed class VelopackUpdater(string feedUrl) : IInstalledUpdater
 {
-    private readonly UpdateManager manager = new(feedUrl);
+    private readonly UpdateManager manager = new(CreateSource(feedUrl));
+    public static IUpdateSource CreateSource(string feedUrl, IFileDownloader? downloader = null)
+    {
+        var uri = new Uri(feedUrl, UriKind.Absolute);
+        if (uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo))
+            throw new ArgumentException("Updates require an HTTPS source without embedded credentials.", nameof(feedUrl));
+        if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            if (uri.AbsolutePath.Trim('/').Split('/') is not [var owner, var repo] ||
+                string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo) ||
+                !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+                throw new ArgumentException("Use the GitHub repository URL, such as https://github.com/owner/repository.", nameof(feedUrl));
+            return new GithubSource(feedUrl.TrimEnd('/'), accessToken: null, prerelease: false, downloader: downloader);
+        }
+        return new SimpleWebSource(feedUrl, downloader);
+    }
     private UpdateInfo? pending;
     public bool IsInstalled => manager.IsInstalled;
     public async Task<UpdateRelease?> CheckAsync()

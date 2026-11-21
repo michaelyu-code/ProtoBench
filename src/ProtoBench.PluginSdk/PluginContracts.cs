@@ -13,6 +13,7 @@ public interface IToolkitPlugin : IDisposable
     IEnumerable<ILogParser> Parsers => [];
     IEnumerable<IFileGenerator> Generators => [];
     IEnumerable<IFieldDecoder> FieldDecoders => [];
+    IEnumerable<ProtoBench.Core.Networking.TelnetServerProvider> TelnetServers => [];
     void IDisposable.Dispose() { }
 }
 

@@ -27,9 +27,9 @@ The app is unpackaged and includes its Windows App SDK runtime; no MSIX deployme
 dotnet publish src/ProtoBench.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -o artifacts/publish
 ```
 
-Distribute the complete publish directory, not just the executable. Default builds make no network requests and need no accounts or server dependencies. NuGet restore is a development-time operation.
+Distribute the complete publish directory, not just the executable. Ordinary development builds make no network requests and need no accounts or server dependencies. NuGet restore is a development-time operation.
 
-Update support is implemented but disabled by default. See [update configuration and release preparation](docs/UPDATES.md) before enabling it in a future release.
+Release packages check GitHub Releases once at startup and show a notice when a newer version is available. Checks can also be run from Settings. Installed copies can download and restart to update; portable copies link to the latest download. Ordinary development builds keep updates disabled. See [update configuration](docs/UPDATES.md).
 
 ## Architecture
 

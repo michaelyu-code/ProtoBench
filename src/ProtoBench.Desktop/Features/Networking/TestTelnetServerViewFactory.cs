@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Data;
 using ProtoBench.Application.Workspaces;
 using ProtoBench.Desktop.Controls;
 using ProtoBench.Desktop.Services;
-using ProtoBench.Utilities.Networking;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace ProtoBench.Desktop.Features.Networking;
@@ -19,22 +18,33 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
         var port = Ui.Input(vm, nameof(vm.ListenPort), "Listen port (0 = automatic)"); port.MaxLength = 5;
         var profile = new ComboBox
         {
-            Header = "Server profile", ItemsSource = new[] { "ASCII Telnet", "ANSI / VT100", "Telserv / TN6530 (conversational simulation)" },
-            SelectedIndex = (int)vm.Profile, HorizontalAlignment = HorizontalAlignment.Stretch
+            Header = "Server profile", ItemsSource = vm.ServerProfiles,
+            SelectedIndex = vm.SelectedProfileIndex, HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        profile.SelectionChanged += (_, _) => { if (profile.SelectedIndex >= 0) vm.Profile = (TelnetServerProfile)profile.SelectedIndex; };
+        profile.SelectionChanged += (_, _) => { if (profile.SelectedIndex >= 0) vm.SelectedProfileIndex = profile.SelectedIndex; };
         var ansi = new CheckBox { Content = "Include ANSI sample in greeting" };
         ansi.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.AnsiGreeting)), Mode = BindingMode.TwoWay });
         void UpdateProfile() => ansi.Visibility = vm.ShowAnsiGreeting ? Visibility.Visible : Visibility.Collapsed;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(vm.Profile)) return;
-            profile.SelectedIndex = (int)vm.Profile; UpdateProfile();
+            if (e.PropertyName != nameof(vm.SelectedProfileIndex)) return;
+            profile.SelectedIndex = vm.SelectedProfileIndex; UpdateProfile();
         };
         UpdateProfile();
+        var tls = new CheckBox { Content = "Use TLS" };
+        tls.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.UseTls)), Mode = BindingMode.TwoWay });
+        var password = new PasswordBox { Header = "PFX password", Password = vm.CertificatePassword };
+        password.PasswordChanged += (_, _) => vm.CertificatePassword = password.Password;
+        var tlsSettings = ToolLayout.Stack(
+            Ui.Input(vm, nameof(vm.CertificatePath), "PFX path (optional)"), password,
+            Ui.Input(vm, nameof(vm.CertificateHostname), "Test certificate hostname / IP"),
+            Ui.Text("Leave the PFX path empty to generate a temporary self-signed certificate. Clients must trust that certificate or allow it for testing. TLS starts immediately on connection."));
+        void UpdateTls() => tlsSettings.Visibility = vm.UseTls ? Visibility.Visible : Visibility.Collapsed;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.UseTls)) UpdateTls(); };
+        UpdateTls();
         var config = new ContentControl
         {
-            Content = ToolLayout.Stack(profile, Ui.BoundText(vm, nameof(vm.ProfileDescription)), ToolLayout.Columns(160, address, port), ansi),
+            Content = ToolLayout.Stack(profile, Ui.BoundText(vm, nameof(vm.ProfileDescription)), ToolLayout.Columns(160, address, port), ansi, tls, tlsSettings),
             HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         config.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
@@ -60,10 +70,10 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
                 Content = ToolLayout.Stack(
                     Ui.Text("Commands: help, echo <text>, ansi, time, quit. Other text is echoed back. Enable Telnet preview in the relay to clean the ANSI sample. Stop or close this tab to release the listener and clients. Sessions idle for 5 minutes are closed; input lines are limited to 1,024 characters."),
                     Ui.Text("Telserv/TN6530: configure the client terminal type as TN6530, TN653X, 6530, 653X or TN6530-8. Choose TACL at the service menu. Simulated commands: HELP, STATUS, TIME, VOLUME, FILES, ECHO <text>, SCREEN, LOGOFF. LOGOFF returns to the menu; EXIT at the menu disconnects. Terminal negotiation has a 30-second deadline. Clients declining terminal type use a text-only menu. This is a conversational test simulator; block-mode forms and host execution are not supported."),
-                    Ui.Text("Relay setup: use this server's listen IP and actual port as the relay's upstream endpoint. Set both incoming and upstream connections to Plain TCP so the server greeting arrives immediately. Connect your Telnet client to the relay's listen port. Use different ports; for example server 2323 and relay 9000. If the server binds 0.0.0.0 or ::, use 127.0.0.1 or ::1 as the local upstream IP."))
+                    Ui.Text("Relay setup: use this server's listen IP and actual port as the relay's upstream endpoint. Set the relay upstream to match this server: Plain TCP or TLS. For a generated test certificate, adjust upstream certificate trust for testing. Choose the relay incoming mode to match your client. Connect your Telnet client to the relay's listen port. Use different ports; for example server 2323 and relay 9000. If the server binds 0.0.0.0 or ::, use 127.0.0.1 or ::1 as the local upstream IP."))
             };
         var page = ToolLayout.Page(vm.Title,
-            "Standalone test server with ASCII, ANSI/VT100 and Telserv/TN6530 simulation profiles. No login required; up to 8 clients.",
+            "Test server with built-in and plugin profiles, optional TLS, and up to 8 clients.",
             ToolLayout.Columns(340,
                 ToolLayout.Section("Server", config, Ui.Row(start, stop), endpoint, copyEndpoint,
                     Ui.BoundText(vm, nameof(vm.Status)), Ui.BoundText(vm, nameof(vm.Error)), feedback),

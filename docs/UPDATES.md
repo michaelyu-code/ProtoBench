@@ -1,40 +1,51 @@
-# Updates (disabled by default)
+# GitHub Releases updates
 
-`UpdatesEnabled` is a build-time feature flag, defaulting to `false`. Ordinary builds hide the Updates section in Settings, skip Velopack bootstrapping, and reject update checks, downloads, restart and download-page actions at the service boundary. There are no startup checks or background downloads, even when enabled. No live endpoints are configured or releases published by this change.
+Release builds created by `Build-Release.ps1` enable updates from the public GitHub repository `michaelyu-code/ProtoBench`. The workflow passes its own `GITHUB_REPOSITORY` so forks publish and check their own releases. No access token is embedded in the application. Ordinary development builds and standalone developer-kit builds keep updates disabled unless explicitly enabled.
 
-## Enable later
+## User flow
 
-Build/publish with these MSBuild properties, preferably supplied through a private release `.props` file or CI arguments:
+An update-enabled app checks GitHub Releases once in the background when its main window first opens. If a newer version exists, a dismissible **Update available** banner shows its version. **View update** opens Settings with the download option ready. An unavailable feed does not interrupt startup; a manual check can be retried later. Disabled development builds do not make this request.
+
+Open **Settings → Updates → Check for updates** to check again. Downloads and restart still require explicit user actions; there are no automatic downloads or installations. Opening Settings while the startup check is running shares that check instead of starting a second request.
+
+- **Installed app:** Velopack's `GithubSource` reads stable GitHub Releases and their `releases.win.json` assets. When a newer version exists, choose **Download update**, then **Restart to update**. Restart requires confirmation because open workspace inputs close. Downloaded updates are not automatically applied at startup.
+- **Portable ZIP:** ProtoBench reads `releases/latest/download/latest.json`, compares semantic versions, and offers the existing **Open download page** action. Download and replace the portable copy manually. Equal or older versions do not offer an update. The manifest must contain a stable version.
+- **Errors:** The download page remains available if checking or downloading fails.
+
+GitHub prereleases are excluded from the installed updater. GitHub's `releases/latest` URL directs portable users to the latest stable release. There is no preview update channel. Public GitHub checks are unauthenticated and subject to GitHub's rate limits.
+
+## Release assets
+
+Every release build creates the installer, portable ZIP, SDK ZIP and developer-kit ZIP, plus:
+
+- `ProtoBench.Desktop-VERSION-full.nupkg`: compiled application update package.
+- `releases.win.json`: Velopack's Windows release feed, referencing that package.
+- `latest.json`: small version manifest for portable copies.
+- `SHA256SUMS.txt`: checksums of all published files.
+
+The workflow retains the feed and package as a separate updates artifact and uploads all assets to the tagged GitHub Release before publishing its draft. Each release includes a complete package, so updates work without downloading or building older releases. Delta packages are not currently generated. No additional source-code hosting or update server is needed.
+
+The package ID `ProtoBench.Desktop` must stay stable, and the app version, release tag version and Velopack package version must match. User settings and plugins under `%LOCALAPPDATA%/ProtoBench` are separate from the installed application. Builds that previously disabled update checks must be replaced once with an update-enabled build; they cannot discover updates while that feature is disabled.
+
+## Build configuration
 
 ```powershell
-dotnet publish src/ProtoBench.Desktop -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:Version=1.1.0 -p:UpdatesEnabled=true -p:UpdateManifestUrl=https://your-host/latest.json -p:UpdateDownloadPageUrl=https://your-host/download -p:UpdateFeedUrl=https://your-host/updates -o artifacts/publish
+./scripts/Build-Release.ps1 -Version 2.0.7 -GitHubRepository michaelyu-code/ProtoBench -OutputDirectory artifacts/release-2.0.7
 ```
 
-Replace all three example URLs with real HTTPS URLs. Enabled builds fail when any URL property is omitted. The service also validates HTTPS URLs before any action. The values are compiled into assembly metadata; changing a local user setting cannot enable this feature. Build without these properties (or with `-p:UpdatesEnabled=false`) to disable it again.
+`Build-Release.ps1` enables updates and supplies these compiled MSBuild values:
 
-The manifest for ordinary folder/ZIP copies is a small JSON file (maximum 64 KiB, 30-second request timeout):
+| Property | Value |
+| --- | --- |
+| `UpdatesEnabled` | `true` |
+| `UpdateFeedUrl` | `https://github.com/michaelyu-code/ProtoBench` |
+| `UpdateDownloadPageUrl` | `https://github.com/michaelyu-code/ProtoBench/releases/latest` |
+| `UpdateManifestUrl` | `https://github.com/michaelyu-code/ProtoBench/releases/latest/download/latest.json` |
 
-```json
-{
-  "version": "1.1.0",
-  "releaseNotes": "Describe the changes in this release."
-}
-```
+`Build-DeveloperKit.ps1 -EnableUpdates -GitHubRepository owner/repository` also enables checks in its test app. Without `-EnableUpdates` it explicitly compiles with updates disabled. A local user setting cannot enable or redirect updates. Enabled builds require all three HTTPS URLs. Generic HTTPS Velopack feed directories remain supported through `SimpleWebSource`; public `github.com/owner/repository` URLs select `GithubSource` with prereleases disabled.
 
-Use stable semantic versions. Equal or older versions do not offer an update; invalid versions and prereleases produce a check error. Release notes are displayed as plain text. The download button always opens the configured page, never an executable URL received from the manifest. Users of ordinary folder copies download and replace their application manually.
+Velopack 1.2.161 is pinned both in the app dependency and `.config/dotnet-tools.json`. Release packaging restores the local tool. The entry point runs the bootstrap before logging or WinUI initialization when installation support or updates are enabled. Installer startup support is independent of update checks.
 
-## Velopack releases
+## Verification
 
-Velopack 1.2.161 is pinned as a dependency. The custom WinUI entry point runs its bootstrap before initializing the UI, only in enabled builds. Automatic application of downloaded updates on startup is disabled: users explicitly download, then select Restart to update and confirm that open workspace inputs will be closed.
-
-Install the matching `vpk` tool in your release environment. After publishing an enabled build, package it, for example:
-
-```powershell
-vpk pack --packId ProtoBench --packVersion 1.1.0 --packDir artifacts/publish --mainExe ProtoBench.exe --outputDir artifacts/releases
-```
-
-Keep `packVersion` and the app's `Version` property identical, and keep `packId` stable across releases. Publish the generated feed and update packages at `UpdateFeedUrl`. The SDK expects a Velopack release feed there, not a GitHub release webpage. A GitHub-specific source would require a different source adapter. Publish the installer and a separate ZIP of the ordinary publish folder on the download page. Update `latest.json` only after the release artifacts are available.
-
-Velopack-managed installations use the Velopack feed for version checks and downloads. Ordinary publish-folder copies use the JSON manifest. Both expose Open download page, including after errors. Checks and downloads happen only after the user clicks the corresponding button.
-
-Before a real rollout, sign the installer/app, verify certificate trust on a clean machine, and test two enabled versions end to end: install v1, publish v2, check, download, cancel restart, then restart and verify v2 and preserved local settings. Also test the folder-copy download flow and unavailable feeds. No real installer upgrade or download-page launch has been exercised in this development change.
+Automated tests cover GitHub stable-release selection and package URL resolution with simulated GitHub responses, semantic version comparisons for portable copies, invalid feeds, disabled builds, download failures, and explicit restart gating. Local release packaging verifies feed/package versions and includes all update artifacts. A live two-version install/download/restart cycle against a newly published GitHub Release still requires a release smoke test. Building packages does not install them or publish a release.

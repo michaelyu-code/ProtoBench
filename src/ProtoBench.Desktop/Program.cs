@@ -10,19 +10,25 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (LocalDataRemoval.TryRun(args)) return;
+        var options = UpdateOptions.FromAssembly(typeof(Program).Assembly);
+        var bootstrapInstaller = options.Enabled;
+#if PROTOBENCH_INSTALLER
+        // Installation lifecycle hooks must run before logging or WinUI initialization.
+        bootstrapInstaller = true;
+#endif
+        if (bootstrapInstaller)
+            Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         using var failures = new ProcessExceptionLogging(ApplicationLogging.Logger);
-        try { StartApplication(args); }
+        try { StartApplication(); }
         catch (Exception ex)
         {
             ApplicationLogging.Logger.LogCritical(new EventId(106), ex, "Process bootstrap failed");
             throw;
         }
     }
-    private static void StartApplication(string[] args)
+    private static void StartApplication()
     {
-        var options = UpdateOptions.FromAssembly(typeof(Program).Assembly);
-        if (options.Enabled)
-            Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Microsoft.UI.Xaml.Application.Start(p =>
         {

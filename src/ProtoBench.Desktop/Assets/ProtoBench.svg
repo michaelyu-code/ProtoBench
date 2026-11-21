@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#182B48"/><stop offset="1" stop-color="#0C1526"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#4BE2C1"/><stop offset="1" stop-color="#398CF5"/>
+    </linearGradient>
+    <linearGradient id="cursor" gradientUnits="userSpaceOnUse" x1="128" y1="171" x2="193" y2="189">
+      <stop stop-color="#4BE2C1"/><stop offset="1" stop-color="#398CF5"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)" stroke="url(#accent)" stroke-width="7"/>
+  <path d="M35 77H221" stroke="#FFFFFF" stroke-opacity=".1" stroke-width="3"/>
+  <g fill="#4BE2C1"><circle cx="49" cy="49" r="5"/><circle cx="69" cy="49" r="5" opacity=".65"/><circle cx="89" cy="49" r="5" opacity=".35"/></g>
+  <path d="M68 108L109 144L68 180" fill="none" stroke="#F5FAFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M137 180H184" stroke="url(#cursor)" stroke-width="18" stroke-linecap="round"/>
+</svg>

@@ -38,7 +38,7 @@ To create a complete kit for another developer, run `./scripts/Build-DeveloperKi
 
 Use the .NET 10 SDK. Reference `src/ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj`, or distribute the SDK and its contract assemblies to developers. Keep contracts at the app's supported API/assembly versions. A plugin project should set `<EnableDynamicLoading>true</EnableDynamicLoading>` so dependency metadata and private runtime dependencies are available in build output.
 
-Implement one public, concrete, parameterless `IToolkitPlugin` entry type. Its optional `Tools`, `Parsers`, `Generators`, and `FieldDecoders` properties export capabilities; omitted properties export nothing. Use package-qualified IDs such as `acme.response-code`. Tool/parser/generator IDs are case-insensitively unique within their respective registries. Decoder IDs are case-sensitive, and `emvEntries` is reserved. Processing-code decoding is provided by extensions. The whole package is rejected if any export conflicts. `Dispose` releases package-wide resources.
+Implement one public, concrete, parameterless `IToolkitPlugin` entry type. Its optional `Tools`, `Parsers`, `Generators`, `FieldDecoders`, and `TelnetServers` properties export capabilities; omitted properties export nothing. Use package-qualified IDs such as `acme.response-code`. Tool/parser/generator IDs are case-insensitively unique within their respective registries. Decoder IDs are case-sensitive, and `emvEntries` is reserved. Processing-code decoding is provided by extensions. The whole package is rejected if any export conflicts. `Dispose` releases package-wide resources.
 
 A manifest at the package root declares exactly the files to import:
 
@@ -66,6 +66,26 @@ Optional schema-version 1 JSON definitions belong under `definitions/messages/`,
 Export a `PluginTool` with an ID, name, description, ordered `ToolInput` list and a `CreateSession` factory. Inputs support Text, Multiline, Secret (masked) and Choice. Give Choice inputs a nonempty choices list containing their default value. A standard form supports at most 64 inputs, required checks, Run, Clear inputs, Cancel, text output, Copy result and optional hierarchical result fields. The host does not persist tool inputs or results.
 
 Each factory call must return a **new** `IPluginToolSession`. Its `ExecuteAsync` receives a read-only snapshot of input strings and a cancellation token, and returns `PluginToolResult(Text, Fields?)`. Execution is off the UI thread; never access WinUI controls from this method. Honor cancellation and enforce resource limits appropriate to the operation. The host disables Run during execution. Closing a tab cancels its operation and disposes the session after that operation ends; a non-cooperative session can delay its own disposal. Treat masked input as ordinary managed strings, not guaranteed-erased secret storage.
+
+## Telnet server profiles
+
+Export `IToolkitPlugin.TelnetServers` to add options to **Utilities → Test Telnet Server → Server profile**:
+
+```csharp
+using ProtoBench.Core.Networking;
+
+public IEnumerable<TelnetServerProvider> TelnetServers =>
+[
+    new("acme.terminal", "Acme terminal", "Acme terminal simulator.",
+        () => new MyTerminalSession())
+];
+```
+
+Implement `ITelnetServerSession.RunAsync(ITelnetServerConnection, CancellationToken)` and `Dispose()`. Return a fresh session for every client; the factory may run concurrently. The host runs sessions off the UI thread and owns listening, optional immediate TLS, the eight-client limit, five-minute read idle timeout, traffic capture and socket cleanup. Sessions receive application bytes after TLS decryption and own Telnet negotiation, framing, terminal behavior and input limits. No built-in greeting or negotiation is added for plugin profiles.
+
+Use connection `ReadAsync`, `WriteAsync` and `Log`; honor cancellation, stop on a zero-byte read, and release session resources in `Dispose`. The connection is valid only during `RunAsync`. Ordinary factory/session failures are logged and close that client while the listener remains available. Non-cooperative plugin code can delay shutdown, like other in-process extensions.
+
+Provider IDs are case-insensitively unique. `builtin.ascii`, `builtin.ansi-vt100`, and `builtin.telserv-tn6530` are reserved. Invalid definitions and conflicting IDs reject the whole package. The example plugin includes **Example byte echo**, a raw-byte echo profile without Telnet negotiation. Loaded providers appear after the three built-in profiles and support plain TCP and TLS. Installation and enable/disable changes take effect after restart. These additive contracts keep API version 2; build against the updated SDK and use the matching updated host. Existing plugins can omit the property. The developer kit includes the new contract source.
 
 ## Custom WinUI views
 

@@ -7,6 +7,146 @@ namespace ProtoBench.Utilities.Tests;
 
 public sealed class TestTelnetServerTests
 {
+    [Fact]
+    public async Task FailedPluginFactoryClosesOnlyThatClient()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var calls = 0;
+        var provider = new ProtoBench.Core.Networking.TelnetServerProvider("test.failure", "Test", "Test",
+            () => Interlocked.Increment(ref calls) == 1 ? throw new InvalidOperationException("factory failed") : new EchoSession());
+        await using var server = TestTelnetServer.Start(IPAddress.Loopback, 0, provider: provider);
+        using var first = new TcpClient();
+        await first.ConnectAsync(server.LocalEndpoint, timeout.Token);
+        Assert.Equal(0, await first.GetStream().ReadAsync(new byte[1], timeout.Token));
+        using var second = new TcpClient();
+        await second.ConnectAsync(server.LocalEndpoint, timeout.Token);
+        await second.GetStream().WriteAsync("ok"u8.ToArray(), timeout.Token);
+        var response = new byte[2];
+        await second.GetStream().ReadExactlyAsync(response, timeout.Token);
+        Assert.Equal("ok", Encoding.ASCII.GetString(response));
+        Assert.Contains(server.Capture.Snapshot().Entries, e => e.Description.Contains("factory failed"));
+    }
+
+    [Fact]
+    public async Task StopCancelsAndDisposesPluginSession()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var session = new WaitingSession();
+        var provider = new ProtoBench.Core.Networking.TelnetServerProvider("test.wait", "Test", "Test", () => session);
+        await using var server = TestTelnetServer.Start(IPAddress.Loopback, 0, provider: provider);
+        using var client = new TcpClient();
+        await client.ConnectAsync(server.LocalEndpoint, timeout.Token);
+        await session.Started.Task.WaitAsync(timeout.Token);
+        await server.DisposeAsync().AsTask().WaitAsync(timeout.Token);
+        Assert.True(session.Disposed);
+        Assert.Equal(0, server.ActiveConnections);
+    }
+
+    private sealed class WaitingSession : ProtoBench.Core.Networking.ITelnetServerSession
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Disposed { get; private set; }
+        public async Task RunAsync(ProtoBench.Core.Networking.ITelnetServerConnection connection, CancellationToken token)
+        {
+            Started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        }
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
+    public async Task StopReleasesClientDuringTlsHandshake()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var certificate = RelayTestCertificate.Create("localhost");
+        await using var server = TestTelnetServer.Start(IPAddress.Loopback, 0, certificate: certificate);
+        using var client = new TcpClient();
+        await client.ConnectAsync(server.LocalEndpoint, timeout.Token);
+        while (server.ActiveConnections == 0) await Task.Delay(10, timeout.Token);
+        await server.DisposeAsync().AsTask().WaitAsync(timeout.Token);
+        Assert.Equal(0, server.ActiveConnections);
+        using var rebound = new TcpListener(server.LocalEndpoint); rebound.Start();
+    }
+
+    [Theory]
+    [InlineData(TelnetServerProfile.Ascii)]
+    [InlineData(TelnetServerProfile.AnsiVt100)]
+    [InlineData(TelnetServerProfile.TelservTn6530)]
+    public async Task BuiltInProfilesRunOverTls(TelnetServerProfile profile)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var certificate = RelayTestCertificate.Create("localhost");
+        await using var server = TestTelnetServer.Start(IPAddress.Loopback, 0, profile: profile, certificate: certificate);
+        using var client = new TcpClient();
+        await client.ConnectAsync(server.LocalEndpoint, timeout.Token);
+        using var ssl = new System.Net.Security.SslStream(client.GetStream(), false, (_, cert, _, _) => cert?.GetCertHashString() == certificate.GetCertHashString());
+        await ssl.AuthenticateAsClientAsync(new System.Net.Security.SslClientAuthenticationOptions { TargetHost = "localhost" }, timeout.Token);
+        if (profile == TelnetServerProfile.TelservTn6530)
+        {
+            await ssl.ReadExactlyAsync(new byte[18], timeout.Token);
+            await ssl.WriteAsync(new byte[] { 255, 252, 24 }, timeout.Token);
+            Assert.Contains("TELSERV simulation", Encoding.ASCII.GetString(await ReadUntilAsync(ssl, "Service> ", timeout.Token)));
+        }
+        else
+        {
+            Assert.Contains("ProtoBench test Telnet server", Encoding.ASCII.GetString(await ReadUntilAsync(ssl, "> ", timeout.Token)));
+            await ssl.WriteAsync("echo secure\r\n"u8.ToArray(), timeout.Token);
+            Assert.Contains("secure", Encoding.ASCII.GetString(await ReadUntilAsync(ssl, "> ", timeout.Token)));
+        }
+        Assert.Contains(server.Capture.Snapshot().Entries, e => e.Description.StartsWith("TLS:"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PluginSessionsAreIndependentCapturedAndDisposed(bool tls)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var certificate = tls ? RelayTestCertificate.Create("localhost") : null;
+        var sessions = new System.Collections.Concurrent.ConcurrentBag<EchoSession>();
+        var provider = new ProtoBench.Core.Networking.TelnetServerProvider("test.echo", "Test echo", "Test", () =>
+        {
+            var session = new EchoSession(); sessions.Add(session); return session;
+        });
+        await using var server = TestTelnetServer.Start(IPAddress.Loopback, 0, certificate: certificate, provider: provider);
+        using var first = new TcpClient(); using var second = new TcpClient();
+        foreach (var client in new[] { first, second })
+        {
+            await client.ConnectAsync(server.LocalEndpoint, timeout.Token);
+            Stream stream = client.GetStream();
+            if (tls)
+            {
+                var ssl = new System.Net.Security.SslStream(stream, false, (_, cert, _, _) => cert?.GetCertHashString() == certificate!.GetCertHashString());
+                await ssl.AuthenticateAsClientAsync(new System.Net.Security.SslClientAuthenticationOptions { TargetHost = "localhost" }, timeout.Token);
+                stream = ssl;
+            }
+            using (stream)
+            {
+                await stream.WriteAsync("hello"u8.ToArray(), timeout.Token);
+                var response = new byte[5]; await stream.ReadExactlyAsync(response, timeout.Token);
+                Assert.Equal("hello", Encoding.ASCII.GetString(response));
+            }
+        }
+        await server.DisposeAsync();
+        Assert.Equal(2, sessions.Count);
+        Assert.All(sessions, s => Assert.True(s.Disposed));
+        var snapshot = server.Capture.Snapshot();
+        Assert.Equal(10, snapshot.ClientBytes); Assert.Equal(10, snapshot.ServerBytes);
+    }
+
+    private sealed class EchoSession : ProtoBench.Core.Networking.ITelnetServerSession
+    {
+        public bool Disposed { get; private set; }
+        public async Task RunAsync(ProtoBench.Core.Networking.ITelnetServerConnection connection, CancellationToken token)
+        {
+            var buffer = new byte[128];
+            int read;
+            while ((read = await connection.ReadAsync(buffer, token)) > 0)
+                await connection.WriteAsync(buffer.AsMemory(0, read), token);
+        }
+        public void Dispose() => Disposed = true;
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -66,7 +206,7 @@ public sealed class TestTelnetServerTests
         Assert.Contains(TestTelnetServer.AnsiSample, Encoding.ASCII.GetString(await ReadUntilAsync(ansiClient.GetStream(), "> ", token)));
     }
 
-    private static async Task<byte[]> ReadUntilAsync(NetworkStream stream, string suffix, CancellationToken token)
+    private static async Task<byte[]> ReadUntilAsync(Stream stream, string suffix, CancellationToken token)
     {
         var data = new List<byte>();
         var buffer = new byte[1];
