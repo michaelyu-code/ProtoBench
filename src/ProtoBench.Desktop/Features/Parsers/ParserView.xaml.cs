@@ -24,6 +24,10 @@ public sealed partial class ParserView : UserControl
     private readonly ParserResultPresentation presentation;
     private bool autoFitEnabled;
     private bool inspectingMessage;
+    private bool hasResults;
+    private bool layoutQueued;
+    // Mutating a shared palette updates existing cards without rebuilding the message page.
+    private readonly SolidColorBrush violationBrush = new(), warningBrush = new(), inboundBrush = new(), outboundBrush = new(), unknownDirectionBrush = new();
     private int specificationColumns;
     private bool verboseChecks;
     private IReadOnlyList<FieldCheck> checkDetails = [];
@@ -98,25 +102,24 @@ public sealed partial class ParserView : UserControl
     }
 
     private static int Errors(ParsedRecord r) => r.Findings.Count(IsError);
-    private Brush CheckBrush(bool violation, bool warning)
+    private Brush CheckBrush(bool violation, bool warning) => violation ? violationBrush : warning ? warningBrush : Foreground;
+    private Brush DirectionBrush(string? direction) => direction switch
     {
-        if (!violation && !warning) return Foreground;
-        if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
-            return new SolidColorBrush(new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground));
-        return new SolidColorBrush(ActualTheme == ElementTheme.Light
-        ? violation ? Windows.UI.Color.FromArgb(255, 180, 35, 24) : Windows.UI.Color.FromArgb(255, 128, 96, 0)
-        : violation ? Windows.UI.Color.FromArgb(255, 255, 119, 119) : Windows.UI.Color.FromArgb(255, 255, 209, 102));
-    }
-    private Brush DirectionBrush(string? direction)
+        "IN" => inboundBrush, "OUT" => outboundBrush, _ => unknownDirectionBrush
+    };
+
+    private void UpdateBrushes()
     {
-        if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
-            return new SolidColorBrush(new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground));
-        return new SolidColorBrush(direction switch
-        {
-            "IN" => ActualTheme == ElementTheme.Light ? Windows.UI.Color.FromArgb(255, 0, 95, 184) : Windows.UI.Color.FromArgb(255, 102, 190, 255),
-            "OUT" => ActualTheme == ElementTheme.Light ? Windows.UI.Color.FromArgb(255, 112, 48, 160) : Windows.UI.Color.FromArgb(255, 208, 160, 255),
-            _ => ActualTheme == ElementTheme.Light ? Windows.UI.Color.FromArgb(255, 96, 96, 96) : Windows.UI.Color.FromArgb(255, 180, 180, 180)
-        });
+        var highContrast = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+        var light = ActualTheme == ElementTheme.Light;
+        var foreground = highContrast
+            ? new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground)
+            : default;
+        violationBrush.Color = highContrast ? foreground : light ? Windows.UI.Color.FromArgb(255, 180, 35, 24) : Windows.UI.Color.FromArgb(255, 255, 119, 119);
+        warningBrush.Color = highContrast ? foreground : light ? Windows.UI.Color.FromArgb(255, 128, 96, 0) : Windows.UI.Color.FromArgb(255, 255, 209, 102);
+        inboundBrush.Color = highContrast ? foreground : light ? Windows.UI.Color.FromArgb(255, 0, 95, 184) : Windows.UI.Color.FromArgb(255, 102, 190, 255);
+        outboundBrush.Color = highContrast ? foreground : light ? Windows.UI.Color.FromArgb(255, 112, 48, 160) : Windows.UI.Color.FromArgb(255, 208, 160, 255);
+        unknownDirectionBrush.Color = highContrast ? foreground : light ? Windows.UI.Color.FromArgb(255, 96, 96, 96) : Windows.UI.Color.FromArgb(255, 180, 180, 180);
     }
     private MessageRow Card(LogRecordSummary record) => new(record)
     {
@@ -127,6 +130,7 @@ public sealed partial class ParserView : UserControl
     public ParserView(ParserWorkspace vm, FileDialogService dialogs)
     {
         InitializeComponent();
+        UpdateBrushes();
         presentation = (ParserResultPresentation)Resources["ResultPresentation"];
         autoFitEnabled = vm.AutoFitResults;
         verboseChecks = vm.VerboseChecks;
@@ -145,6 +149,8 @@ public sealed partial class ParserView : UserControl
             ArrangePanes();
             if (BackToMessages.Visibility == Visibility.Visible) BackToMessages.Focus(FocusState.Programmatic);
         };
+        InputToggleButton.Click += (_, _) => InputPanel.IsExpanded = !InputPanel.IsExpanded;
+        InputPanel.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) => ArrangePanes());
         Ui.Primary(ParseTextButton); Ui.Primary(ParsePathButton);
         ResultsViewPicker.SelectionChanged += (_, _) =>
         {
@@ -156,7 +162,6 @@ public sealed partial class ParserView : UserControl
                 if (tableView is null)
                 {
                     tableView = new ParserTableView(vm);
-                    TableHost.Child = tableView;
                     tableView.OpenMessage += id =>
                     {
                         var index = rows.ToList().FindIndex(r => r.Id == id);
@@ -167,11 +172,15 @@ public sealed partial class ParserView : UserControl
                         ArrangePanes();
                     };
                 }
+                // A collapsed populated table still incurs WinUI unload work when another
+                // tool is selected. Keep its state, but attach its visual tree only in table mode.
+                TableHost.Child = tableView;
                 _ = tableView.LoadAsync(vm.Page);
             }
             else
             {
                 tableView?.Cancel();
+                TableHost.Child = null;
                 if (rows.Count > 0 && Records.SelectedIndex < 0) Records.SelectedIndex = 0;
             }
             ArrangePanes();
@@ -201,17 +210,7 @@ public sealed partial class ParserView : UserControl
         PageSizePicker.SelectedItem = LogQuery.DefaultPageSize;
         bool updatingPage = false;
         bool refreshingRecords = false, suppressRecordScroll = false, scrollAfterParse = false;
-        bool suppressPostParseScroll = false;
-        double beforeParseOffset = 0;
-        long scrollRequestVersion = 0;
         Records.BringIntoViewRequested += (_, args) => { if (suppressRecordScroll) args.Handled = true; };
-        PageScroll.BringIntoViewRequested += (_, args) => { if (suppressPostParseScroll) args.Handled = true; };
-        PageScroll.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) =>
-            { if (!vm.IsBusy) { suppressPostParseScroll = false; scrollRequestVersion++; } }), handledEventsToo: true);
-        PageScroll.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, _) =>
-            { if (!vm.IsBusy) { suppressPostParseScroll = false; scrollRequestVersion++; } }), handledEventsToo: true);
-        PageScroll.AddHandler(UIElement.PointerWheelChangedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) =>
-            { if (!vm.IsBusy) { suppressPostParseScroll = false; scrollRequestVersion++; } }), handledEventsToo: true);
         var searchDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         LogQuery ReadQuery(long pageIndex = 0) => new(SearchInput.Text, SearchField.Text.Trim(),
             DirectionPicker.SelectedIndex > 0 ? (string)DirectionPicker.SelectedItem : "",
@@ -220,7 +219,13 @@ public sealed partial class ParserView : UserControl
             Descending.IsChecked == true, pageIndex, PageSizePicker.SelectedItem is int size ? size : LogQuery.DefaultPageSize);
         void Refresh()
         {
+            hasResults = vm.Page is not null;
+            SetupIntroduction.Visibility = hasResults ? Visibility.Collapsed : Visibility.Visible;
+            ResultsSection.Visibility = SearchToolbar.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
+            PageContent.RowDefinitions[0].Height = hasResults ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+            PageContent.RowDefinitions[2].Height = hasResults ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             inspectingMessage = false;
+            ArrangePanes();
             refreshingRecords = suppressRecordScroll = true;
             selectionCancellation?.Cancel();
             rows = vm.Page?.Rows ?? [];
@@ -247,21 +252,22 @@ public sealed partial class ParserView : UserControl
                 PageNumber.Maximum = PageNumber.Value = 1;
                 updatingPage = false;
             }
-            PreviousPage.IsEnabled = PreviousPageBottom.IsEnabled = !vm.IsQuerying && vm.Page is { PageIndex: > 0 };
-            NextPage.IsEnabled = NextPageBottom.IsEnabled = !vm.IsQuerying && vm.Page is { } p && p.PageIndex + 1 < p.PageCount;
+            PreviousPage.IsEnabled = !vm.IsQuerying && vm.Page is { PageIndex: > 0 };
+            NextPage.IsEnabled = !vm.IsQuerying && vm.Page is { } p && p.PageIndex + 1 < p.PageCount;
             NoMatches.Visibility = rows.Count == 0 && vm.Page is not null ? Visibility.Visible : Visibility.Collapsed;
             if (rows.Count > 0 && ResultsViewPicker.SelectedIndex != 1) Records.SelectedIndex = 0;
             else if (rows.Count == 0) ShowRecord(null, vm);
             if (ResultsViewPicker.SelectedIndex == 1 && tableView is not null) _ = tableView.LoadAsync(vm.Page);
             refreshingRecords = false;
+
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => suppressRecordScroll = false);
         }
         void ScheduleSearch()
         {
             if (updatingPage) return;
-            var active = (DirectionPicker.SelectedIndex > 0 ? 1 : 0) + (RolePicker.SelectedIndex > 0 ? 1 : 0)
+            var active = (!string.IsNullOrWhiteSpace(SearchField.Text) ? 1 : 0) + (DirectionPicker.SelectedIndex > 0 ? 1 : 0) + (RolePicker.SelectedIndex > 0 ? 1 : 0)
                 + (SortPicker.SelectedIndex > 0 || Descending.IsChecked == true ? 1 : 0);
-            FilterOptions.Header = active > 0 ? $"Filters and sort · {active} active" : "Filters and sort";
+            FilterButton.Content = active > 0 ? $"Filters and sort · {active} active" : "Filters and sort";
             searchDelay.Stop();
             vm.CancelSearch();
             selectionCancellation?.Cancel();
@@ -289,12 +295,10 @@ public sealed partial class ParserView : UserControl
         }
         PreviousPage.Click += async (_, _) => await TurnPage(-1);
         NextPage.Click += async (_, _) => await TurnPage(1);
-        PreviousPageBottom.Click += async (_, _) => await TurnPage(-1);
-        NextPageBottom.Click += async (_, _) => await TurnPage(1);
-        BrowseLayout.SizeChanged += (_, _) => ArrangePanes();
-        FieldLayout.SizeChanged += (_, _) => ArrangePanes();
-        PageScroll.SizeChanged += (_, _) => ArrangePanes();
-        TableHost.SizeChanged += (_, _) => ArrangePanes();
+        BrowseLayout.SizeChanged += (_, _) => ScheduleArrangePanes();
+        FieldLayout.SizeChanged += (_, _) => ScheduleArrangePanes();
+        SizeChanged += (_, _) => ScheduleArrangePanes();
+        TableHost.SizeChanged += (_, _) => ScheduleArrangePanes();
         DetailResizeHandle.DragDelta += (_, args) => ResizeDetails(-args.HorizontalChange);
         DetailResizeHandle.KeyDown += (_, args) =>
         {
@@ -308,7 +312,7 @@ public sealed partial class ParserView : UserControl
             args.Handled = true;
         };
         CloseFieldDetail.Click += (_, _) => { FieldList.SelectedItem = null; FieldList.Focus(FocusState.Programmatic); };
-        ActualThemeChanged += (_, _) => Refresh();
+        ActualThemeChanged += (_, _) => { if (IsLoaded) UpdateBrushes(); };
         PreviousRecord.Click += async (_, _) =>
         {
             if (Records.SelectedIndex > 0) Records.SelectedIndex--;
@@ -430,15 +434,14 @@ public sealed partial class ParserView : UserControl
             if (args.PropertyName == nameof(vm.IsBusy) && vm.IsBusy)
             {
                 DiagnosticsPanel.IsExpanded = false;
-                beforeParseOffset = PageScroll.VerticalOffset;
-                suppressPostParseScroll = true;
-                scrollRequestVersion++;
             }
             Status.Text = vm.Status;
             FilePath.Text = vm.Path;
             Detection.Text = vm.Candidates;
             Diagnostics.Text = vm.Diagnostics;
             DiagnosticsPanel.Header = vm.DiagnosticSummary;
+            InputToggleButton.Content = string.IsNullOrWhiteSpace(vm.Diagnostics) ? "Log input" : "Input · diagnostics";
+            ToolTipService.SetToolTip(InputToggleButton, $"{vm.Candidates}\n{vm.Status}\n{vm.DiagnosticSummary}");
             DiagnosticsPanel.Visibility = string.IsNullOrWhiteSpace(vm.Diagnostics) ? Visibility.Collapsed : Visibility.Visible;
             if (args.PropertyName == nameof(vm.Diagnostics)) ArrangePanes();
             Progress.IsActive = vm.IsBusy || vm.IsQuerying;
@@ -454,36 +457,19 @@ public sealed partial class ParserView : UserControl
                 SortPicker.IsEnabled = PageSizePicker.IsEnabled = PageNumber.IsEnabled = Descending.IsEnabled = !vm.IsBusy;
             if (args.PropertyName == nameof(vm.IsQuerying))
             {
-                PreviousPage.IsEnabled = PreviousPageBottom.IsEnabled = !vm.IsQuerying && vm.Page is { PageIndex: > 0 };
-                NextPage.IsEnabled = NextPageBottom.IsEnabled = !vm.IsQuerying && vm.Page is { } p && p.PageIndex + 1 < p.PageCount;
+                PreviousPage.IsEnabled = !vm.IsQuerying && vm.Page is { PageIndex: > 0 };
+                NextPage.IsEnabled = !vm.IsQuerying && vm.Page is { } p && p.PageIndex + 1 < p.PageCount;
             }
             if (args.PropertyName == nameof(vm.IsBusy) && !vm.IsBusy && scrollAfterParse)
             {
                 scrollAfterParse = false;
                 if (vm.AutoScrollResults)
                 {
-                    // Move focus out of the collapsing input controls so WinUI does not scroll
-                    // the next input (Search) back into view after our result navigation.
-                    PageScroll.Focus(FocusState.Programmatic);
+                    ResultsViewPicker.Focus(FocusState.Programmatic);
                     InputPanel.IsExpanded = false;
-                    var requestVersion = scrollRequestVersion;
-                    DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
-                    {
-                        // WinUI animates Expander collapse; its intermediate height gives the wrong destination.
-                        await Task.Delay(350);
-                        if (requestVersion != scrollRequestVersion || vm.IsBusy || !vm.AutoScrollResults || !PageScroll.IsLoaded) return;
-                        PageScroll.UpdateLayout();
-                        var target = PageScroll.VerticalOffset + RecordCount.TransformToVisual(PageScroll).TransformPoint(new Windows.Foundation.Point()).Y;
-                        PageScroll.ChangeView(null, target, null, disableAnimation: false);
-                    });
+                    PageScroll.ChangeView(null, 0, null, disableAnimation: true);
                 }
-                else DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-                {
-                    PageScroll.UpdateLayout();
-                    PageScroll.ChangeView(null, beforeParseOffset, null, disableAnimation: true);
-                });
             }
-            else if (args.PropertyName == nameof(vm.IsBusy) && !vm.IsBusy) suppressPostParseScroll = false;
             if (args.PropertyName != nameof(vm.Page))
                 return;
             if (vm.Page is null) scrollAfterParse = false;
@@ -493,6 +479,7 @@ public sealed partial class ParserView : UserControl
         Unloaded += (_, _) => { searchDelay.Stop(); selectionCancellation?.Cancel(); tableView?.Cancel(); };
         Loaded += (_, _) =>
         {
+            UpdateBrushes();
             autoFitEnabled = vm.AutoFitResults;
             ArrangePanes();
             if (ResultsViewPicker.SelectedIndex == 1 && tableView is not null) _ = tableView.LoadAsync(vm.Page);
@@ -603,43 +590,37 @@ public sealed partial class ParserView : UserControl
         ArrangePanes();
     }
 
+    private void ScheduleArrangePanes()
+    {
+        if (!IsLoaded || layoutQueued) return;
+        layoutQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            layoutQueued = false;
+            ArrangePanes();
+        });
+    }
+
     private void ArrangePanes()
     {
+        if (!IsLoaded) return;
         var showing = FieldDetailPanel.Visibility == Visibility.Visible;
-        var compactPage = PageScroll.ActualWidth < 720 || PageScroll.ActualHeight < 640;
-        PageContent.Margin = new Thickness(compactPage ? 12 : 20);
-        PasteInput.Height = PageScroll.ActualHeight < 640 ? 110 : 180;
-        double availableHeight = double.PositiveInfinity;
-        if (PageScroll.IsLoaded && PageScroll.ActualHeight > 0)
-        {
-            var resultPanel = ResultsViewPicker.SelectedIndex == 1 ? (FrameworkElement)TableHost : BrowseLayout;
-            var headerHeight = Math.Max(0, resultPanel.TransformToVisual(RecordCount).TransformPoint(new Windows.Foundation.Point()).Y);
-            // Measure the budget against standard gaps so compacting the header cannot toggle density back and forth.
-            headerHeight += 2 * (12 - presentation.ResultsGap);
-            availableHeight = Math.Max(0, PageScroll.ActualHeight - headerHeight - Math.Max(40, PagingFooter.DesiredSize.Height)
-                - 24 - (DiagnosticsPanel.Visibility == Visibility.Visible ? 56 : 0));
-        }
-        if (ResultsViewPicker.SelectedIndex == 1)
-        {
-            TableHost.Height = double.IsFinite(availableHeight) ? Math.Max(320, availableHeight) : 600;
-            return;
-        }
+        var compactPage = ActualWidth < 720 || ActualHeight < 640;
+        PageContent.Margin = new Thickness(compactPage ? 8 : 12);
+        PageScroll.Visibility = !hasResults || InputPanel.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        PageScroll.MaxHeight = hasResults ? Math.Max(56, ActualHeight * 0.30) : double.PositiveInfinity;
+        PasteInput.Height = ActualHeight < 640 ? 110 : 180;
+        var availableHeight = BrowseLayout.ActualHeight;
+        var shortInspector = availableHeight < 330;
+        SelectedSummary.Visibility = CheckSummary.Visibility = shortInspector ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(SelectedTitle, $"{SelectedSummary.Text}\n{CheckSummary.Text}");
+        ToolTipService.SetToolTip(FieldDetailTitle, FieldDetailTitle.Text);
+        if (ResultsViewPicker.SelectedIndex == 1) return;
         var layout = presentation.Arrange(BrowseLayout.ActualWidth, FieldLayout.ActualWidth, autoFitEnabled,
             showing, preferredDetailWidth, specificationColumns, availableHeight, Fields.Items.Count);
-        // Bound the whole message tab area, not just the selected field's detail tabs.
-        // Its budget is independent of which message tab is currently selected.
-        // Use the inspector's own origin; the stacked message list above it must
-        // not feed its height back into the inspector's viewport calculation.
-        var inspectorHeaderHeight = Math.Max(0, InspectorTabs.TransformToVisual(InspectorPanel)
-            .TransformPoint(new Windows.Foundation.Point()).Y);
-        InspectorTabs.Height = ParserResultPresentation.DetailHeight(availableHeight, inspectorHeaderHeight,
-            showing, showing && !layout.DetailsBeside);
         var beside = layout.MessagesBeside;
         MessagesPanel.Visibility = beside || !inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
         InspectorPanel.Visibility = beside || inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
         BackToMessages.Visibility = !beside && inspectingMessage ? Visibility.Visible : Visibility.Collapsed;
-        MessagesPanel.Height = ParserResultPresentation.MessagePaneHeight(availableHeight, beside,
-            inspectorHeaderHeight + InspectorTabs.Height + InspectorPanel.Padding.Bottom + InspectorPanel.BorderThickness.Bottom);
         var leftWidth = beside ? new GridLength(layout.MessageWidth) : new GridLength(1, GridUnitType.Star);
         if (BrowseLayout.ColumnDefinitions[0].Width != leftWidth) BrowseLayout.ColumnDefinitions[0].Width = leftWidth;
         var rightWidth = beside ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
@@ -666,13 +647,6 @@ public sealed partial class ParserView : UserControl
         FieldList.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
         CloseFieldDetail.Content = stacked ? "← Fields" : "×";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(CloseFieldDetail, stacked ? "Back to fields" : "Close field details");
-        // A short stacked pane may be smaller than the title/value/actions alone.
-        // Let the entire panel scroll to reach the tabs, and keep each tab's own
-        // content viewport usable. Side-by-side headers remain fixed in place.
-        var scrollDetails = stacked || InspectorTabs.Height < 560;
-        FieldDetailScroll.VerticalScrollMode = scrollDetails ? ScrollMode.Auto : ScrollMode.Disabled;
-        FieldDetailScroll.VerticalScrollBarVisibility = scrollDetails ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-        FieldDetailTabs.Height = scrollDetails ? 260 : double.NaN;
         // The selected narrow detail replaces the list in the same grid row.
         var listHeight = new GridLength(1, GridUnitType.Star);
         var detailHeight = new GridLength(0);

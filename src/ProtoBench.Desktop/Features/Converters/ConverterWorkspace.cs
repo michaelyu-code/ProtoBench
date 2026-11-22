@@ -17,7 +17,14 @@ public sealed class ConverterWorkspace : ToolWorkspace
     private string input = "255", output = "", error = "";
     private int fromBase = 10, toBase = 16;
     private ConversionMode mode;
-    private bool removeSpaces;
+    private bool removeSpaces, compactHexOutput;
+    public bool ProducesHex => Mode is ConversionMode.AsciiToHex or ConversionMode.TextToCp500
+        or ConversionMode.AsciiHexToCp500 or ConversionMode.Cp500ToAsciiHex;
+    public bool CompactHexOutput
+    {
+        get => compactHexOutput;
+        set { if (SetProperty(ref compactHexOutput, value)) OnPropertyChanged(nameof(Output)); }
+    }
     private int revision;
     private TextEncodingOption textEncoding = TextEncodings.Ascii;
     public TextEncodingOption TextEncoding
@@ -48,6 +55,7 @@ public sealed class ConverterWorkspace : ToolWorkspace
         revision++;
         Output = "";
         Error = "";
+        OnPropertyChanged(nameof(ProducesHex));
     }
     public string Input
     {
@@ -59,7 +67,8 @@ public sealed class ConverterWorkspace : ToolWorkspace
     }
     public string Output
     {
-        get => output; private set => SetProperty(ref output, value);
+        get => CompactHexOutput && ProducesHex ? output.Replace(" ", "", StringComparison.Ordinal) : output;
+        private set => SetProperty(ref output, value);
     }
     public string Error
     {

@@ -8,6 +8,66 @@ namespace ProtoBench.Utilities.Tests;
 public sealed class CalculatorTests
 {
     [Fact]
+    public void DetailedTripleDesShowsCbcChainingWithoutDisclosingKeysByDefault()
+    {
+        const string key = "9B397EBF81B1181E282F4BB8ADBADC6B";
+        var calculation = TripleDesCalculator.TransformDetailed("20E81B7ADE88A2597DBF663745A862A1", key,
+            "0100000000000000", false, CipherMode.CBC, PaddingMode.None);
+        Assert.Equal("5C577D4D9B20C0F85C577D4D9B20C0F8", calculation.Output);
+        Assert.Contains("Plaintext XOR chain = 21E81B7ADE88A259", calculation.Details);
+        Assert.Contains("Chain (previous ciphertext): 5C577D4D9B20C0F8", calculation.Details);
+        Assert.Contains("K3 = K1", calculation.Details);
+        Assert.Contains("K1: [hidden]", calculation.Details);
+        Assert.DoesNotContain(key[..16], calculation.Details);
+        Assert.DoesNotContain(key[16..], calculation.Details);
+    }
+
+    [Theory]
+    [InlineData(CipherMode.ECB, PaddingMode.None, "0000000000000000")]
+    [InlineData(CipherMode.ECB, PaddingMode.PKCS7, "0102030405")]
+    [InlineData(CipherMode.CBC, PaddingMode.PKCS7, "0000000000000000")]
+    [InlineData(CipherMode.CBC, PaddingMode.Zeros, "010200")]
+    public void DetailedTripleDesMatchesNormalEncryptAndDecrypt(CipherMode mode, PaddingMode padding, string plaintext)
+    {
+        const string key = "0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123";
+        var iv = mode == CipherMode.CBC ? "0102030405060708" : "";
+        var encrypted = TripleDesCalculator.TransformDetailed(plaintext, key, iv, false, mode, padding, true);
+        Assert.Equal(TripleDesCalculator.Transform(plaintext, key, iv, false, mode, padding), encrypted.Output);
+        Assert.Contains("K1: 0123456789ABCDEF", encrypted.Details);
+        Assert.Contains("K3: 456789ABCDEF0123", encrypted.Details);
+        var decrypted = TripleDesCalculator.TransformDetailed(encrypted.Output, key, iv, true, mode, padding);
+        Assert.Equal(TripleDesCalculator.Transform(encrypted.Output, key, iv, true, mode, padding), decrypted.Output);
+        Assert.Contains("D_K1(E_K2(D_K3(C)))", decrypted.Details);
+        if (padding == PaddingMode.Zeros) Assert.Contains("zero bytes are retained", decrypted.Details);
+    }
+
+    [Fact]
+    public void DetailedTripleDesAccountsForFullBlockPkcs7PaddingAndRemoval()
+    {
+        const string key = "0123456789ABCDEFFEDCBA9876543210";
+        var encrypted = TripleDesCalculator.TransformDetailed("0000000000000000", key, "", false, CipherMode.ECB, PaddingMode.PKCS7);
+        Assert.Contains("Padding: add 8 byte(s): 0808080808080808", encrypted.Details);
+        var decrypted = TripleDesCalculator.TransformDetailed(encrypted.Output, key, "", true, CipherMode.ECB, PaddingMode.PKCS7);
+        Assert.Contains("Padding: validate and remove 8 byte(s): 0808080808080808", decrypted.Details);
+        Assert.Equal("0000000000000000", decrypted.Output);
+    }
+
+    [Fact]
+    public void DetailedTripleDesKeepsProviderValidationAndSupportsCancellation()
+    {
+        const string key = "0123456789ABCDEFFEDCBA9876543210";
+        Assert.Throws<FormatException>(() => TripleDesCalculator.TransformDetailed("00", key, "", false, CipherMode.ECB, PaddingMode.None));
+        Assert.Throws<FormatException>(() => TripleDesCalculator.TransformDetailed("0000000000000000", new string('0', 32), "", false, CipherMode.ECB, PaddingMode.None));
+        Assert.Throws<OperationCanceledException>(() => TripleDesCalculator.TransformDetailed("0000000000000000", key, "", false,
+            CipherMode.ECB, PaddingMode.None, cancellationToken: new CancellationToken(true)));
+        // A valid 3DES key can contain a weak individual DES component. The trace must
+        // not impose the stricter validation of three separate DES providers.
+        const string componentKey = "0000000000000000FEDCBA9876543210";
+        Assert.Equal(TripleDesCalculator.Transform("0000000000000000", componentKey, "", false, CipherMode.ECB, PaddingMode.None),
+            TripleDesCalculator.TransformDetailed("0000000000000000", componentKey, "", false, CipherMode.ECB, PaddingMode.None).Output);
+    }
+
+    [Fact]
     public void TripleDesKeyCheckValueMatchesKnownTwoKeyVector()
     {
         Assert.Equal("08D7B4", TripleDesCalculator.KeyCheckValue("0123456789ABCDEFFEDCBA9876543210"));

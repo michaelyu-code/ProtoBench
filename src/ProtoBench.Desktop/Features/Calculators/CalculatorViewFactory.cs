@@ -8,12 +8,13 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace ProtoBench.Desktop.Features.Calculators;
 
-public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
+public sealed partial class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
 {
     public string ToolId => toolId;
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (CalculatorWorkspace)workspace;
+        if (vm.Kind == CalculatorKind.TripleDes) return CreateTripleDes(vm);
         ComboBox Select(string label, string property, object items)
         {
             var combo = new ComboBox { Header = label, ItemsSource = items, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -39,35 +40,6 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
             urlSafe.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.UrlSafe)), Mode = BindingMode.TwoWay });
             inputs.Children.Add(urlSafe);
         }
-        if (vm.Kind == CalculatorKind.TripleDes)
-        {
-            inputs.Children.Add(ToolLayout.Columns(160, Select("Cipher mode", nameof(vm.Cipher), new[] { "ECB", "CBC" }),
-                Select("Padding", nameof(vm.Padding), new[] { "None", "PKCS7", "Zeroes" })));
-            var key = new PasswordBox { Header = "Key (16 or 24 bytes, hex)", MaxLength = 192, PasswordRevealMode = PasswordRevealMode.Peek };
-            key.PasswordChanged += (_, _) => vm.Key = key.Password;
-            vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Key) && key.Password != vm.Key) key.Password = vm.Key; };
-            inputs.Children.Add(key);
-            var checkValue = new TextBox { Header = "Key check value (KCV · 6 hex digits)", IsReadOnly = true };
-            checkValue.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.Kcv)), Mode = BindingMode.OneWay });
-            var kcvPanel = ToolLayout.Stack(checkValue);
-            var kcvStatus = Ui.Text("");
-            vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Kcv)) kcvStatus.Text = ""; };
-            kcvPanel.Children.Add(Ui.Row(new Button { Content = "Calculate KCV", Command = vm.CalculateKcvCommand }, Ui.Button("Copy KCV", () =>
-            {
-                if (vm.Kcv.Length == 0) return;
-                try { var data = new DataPackage(); data.SetText(vm.Kcv); Clipboard.SetContent(data); kcvStatus.Text = "KCV copied"; }
-                catch { kcvStatus.Text = "Clipboard unavailable. Select and copy the KCV manually."; }
-            })));
-            kcvPanel.Children.Add(kcvStatus);
-            inputs.Children.Add(new Expander { Header = "Key check value (KCV)", Content = kcvPanel,
-                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
-            var iv = Ui.Input(vm, nameof(vm.Iv), "IV (8 bytes, hex)");
-            iv.MaxLength = 64;
-            void UpdateIv() => iv.Visibility = vm.ShowIv ? Visibility.Visible : Visibility.Collapsed;
-            vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.ShowIv)) UpdateIv(); };
-            UpdateIv();
-            inputs.Children.Add(iv);
-        }
         var input = Ui.Input(vm, nameof(vm.Input), vm.InputLabel, vm.Kind != CalculatorKind.Bitwise);
         input.MaxLength = vm.Kind == CalculatorKind.Bitwise ? 128 : 65536;
         input.SetBinding(TextBox.HeaderProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.InputLabel)) });
@@ -86,7 +58,7 @@ public sealed class CalculatorViewFactory(string toolId) : IWorkspaceViewFactory
         inputs.Children.Add(Ui.BoundText(vm, nameof(vm.Error)));
         inputs.Children.Add(Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
         var output = new RawTextViewer { Header = "Result", MinHeight = 180, MaxHeight = 360, TextWrapping = TextWrapping.Wrap };
-        output.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.Output)), Mode = BindingMode.OneWay });
+        output.SetBinding(TextBox.TextProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.DisplayOutput)), Mode = BindingMode.OneWay });
         results.Children.Add(vm.Kind == CalculatorKind.Bitwise
             ? ResultValues.Create(vm, () => vm.Output, "Hex", "Decimal", "Binary") : output);
         var copied = Ui.Text("");

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 
 namespace ProtoBench.Utilities.Binary;
 
-public static class TripleDesCalculator
+public static partial class TripleDesCalculator
 {
     /// <summary>Encrypt-zero KCV: first three bytes of EDE(key, 0000000000000000), ECB without padding.</summary>
     public static string KeyCheckValue(string keyHex) =>

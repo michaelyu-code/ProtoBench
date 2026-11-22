@@ -8,6 +8,8 @@
     <Compile Include="../../src/ProtoBench.Desktop/Features/Networking/NetworkRelayWorkspace.cs" Link="Desktop/NetworkRelayWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Networking/TestTelnetServerWorkspace.cs" Link="Desktop/TestTelnetServerWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Converters/ConverterWorkspace.cs" Link="Desktop/ConverterWorkspace.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCleanupWorkspace.cs" Link="Desktop/TextCleanupWorkspace.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Calculators/CalculatorWorkspace.cs" Link="Desktop/CalculatorWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserWorkspace.cs" Link="Desktop/ParserWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserResultPresentation.cs" Link="Desktop/ParserResultPresentation.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserTablePan.cs" Link="Desktop/ParserTablePan.cs" />

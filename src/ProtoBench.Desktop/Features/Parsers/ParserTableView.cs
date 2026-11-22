@@ -72,6 +72,7 @@ public sealed class ParserTableView : UserControl
         HorizontalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
     };
+    private readonly ScrollBar verticalBar = new() { Orientation = Orientation.Vertical, SmallChange = 32, Visibility = Visibility.Collapsed };
     private readonly DispatcherTimer columnDelay = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly Dictionary<string, TableColumn> columnWidths = new(StringComparer.Ordinal);
     private readonly List<(LogTableColumn Column, CheckBox Box, ToggleButton Pin, Grid Row)> choices = [];
@@ -80,11 +81,17 @@ public sealed class ParserTableView : UserControl
     private readonly ParserTablePan pan = new();
     private readonly DispatcherTimer panTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private ScrollViewer? dataScroller;
+    private long extentHeightToken, viewportHeightToken;
     private IReadOnlyList<LogTableColumn> catalog = [];
     private LogPage? page;
+    private LogPage? renderedPage;
+    private ElementTheme? renderedTheme;
+    private bool columnsDirty = true;
+    private double savedVerticalOffset, savedHorizontalOffset;
+    private bool restoreScrollPending, restoreScrollQueued;
     private CancellationTokenSource? loading;
     private long version;
-    private bool updatingChoices, active;
+    private bool updatingChoices, active, syncingVerticalBar;
     private TableColumn[] visibleColumns = [];
     private int frozenCount;
     public event Action<long>? OpenMessage;
@@ -94,7 +101,7 @@ public sealed class ParserTableView : UserControl
         this.workspace = workspace;
         AutomationProperties.SetName(data, "Messages table");
         ScrollViewer.SetVerticalScrollMode(data, ScrollMode.Auto);
-        ScrollViewer.SetVerticalScrollBarVisibility(data, ScrollBarVisibility.Auto);
+        ScrollViewer.SetVerticalScrollBarVisibility(data, ScrollBarVisibility.Hidden);
         ScrollViewer.SetHorizontalScrollMode(data, ScrollMode.Disabled);
         ScrollViewer.SetHorizontalScrollBarVisibility(data, ScrollBarVisibility.Disabled);
         var style = new Style(typeof(ListViewItem));
@@ -107,14 +114,23 @@ public sealed class ParserTableView : UserControl
         openButton.Click += (_, _) => OpenSelected();
         var request = new TextBlock { Text = "■ Request", Foreground = new SolidColorBrush(Colors.DodgerBlue), VerticalAlignment = VerticalAlignment.Center };
         var reply = new TextBlock { Text = "■ Reply / response", Foreground = new SolidColorBrush(Colors.MediumPurple), VerticalAlignment = VerticalAlignment.Center };
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        var toolbar = new ActionRow { Spacing = 8 };
         toolbar.Children.Add(columnsButton); toolbar.Children.Add(openButton); toolbar.Children.Add(request); toolbar.Children.Add(reply);
         var root = new Grid { RowSpacing = 8 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumnSpan(toolbar, 2); Grid.SetColumnSpan(status, 2);
         root.Children.Add(toolbar); Grid.SetRow(status, 1); root.Children.Add(status);
         Grid.SetRow(viewport, 2); root.Children.Add(viewport);
+        Grid.SetRow(verticalBar, 2); Grid.SetColumn(verticalBar, 1); root.Children.Add(verticalBar);
+        AutomationProperties.SetName(verticalBar, "Scroll table messages");
+        verticalBar.ValueChanged += (_, e) =>
+        {
+            if (!syncingVerticalBar) dataScroller?.ChangeView(null, e.NewValue, null, disableAnimation: true);
+        };
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         frozenHeaderPanel.Child = frozenHeader;
@@ -122,13 +138,19 @@ public sealed class ParserTableView : UserControl
         header.Children.Add(scrollingHeader); header.Children.Add(frozenHeaderPanel);
         canvas.Children.Add(header); Grid.SetRow(data, 1); canvas.Children.Add(data);
         viewport.Content = canvas;
-        viewport.SizeChanged += (_, e) => canvas.Height = Math.Max(80, e.NewSize.Height - 18);
+        viewport.SizeChanged += (_, e) =>
+        {
+            if (!active || !IsLoaded) return;
+            canvas.Height = Math.Max(0, e.NewSize.Height - 18);
+            UpdateFrozenColumns();
+        };
         viewport.ViewChanged += (_, _) =>
         {
+            if (!active || !IsLoaded) return;
             layout.HorizontalOffset = viewport.HorizontalOffset;
             frozenHeaderTransform.X = layout.HorizontalOffset;
         };
-        data.Loaded += (_, _) => dataScroller = FindScroller(data);
+        data.Loaded += (_, _) => AttachScroller();
         Content = root;
         ConfigurePanning();
         columnDelay.Tick += async (_, _) => { columnDelay.Stop(); await ReloadAsync(); };
@@ -141,14 +163,52 @@ public sealed class ParserTableView : UserControl
             reply.Foreground = new SolidColorBrush(highContrast ? text : ActualTheme == ElementTheme.Light ? Windows.UI.Color.FromArgb(255, 112, 48, 160) : Colors.MediumPurple);
         }
         UpdateLegendColors();
-        ActualThemeChanged += async (_, _) => { UpdateLegendColors(); if (active) await ReloadAsync(); };
+        ActualThemeChanged += async (_, _) =>
+        {
+            UpdateLegendColors();
+            if (renderedTheme == ActualTheme) return;
+            if (active && IsLoaded) await ReloadAsync();
+        };
     }
 
     private void OpenSelected() { if (data.SelectedItem is TableRow row) OpenMessage?.Invoke(row.Id); }
     public void Cancel()
     {
+        if (active && dataScroller is not null)
+        {
+            savedVerticalOffset = dataScroller.VerticalOffset;
+            savedHorizontalOffset = viewport.HorizontalOffset;
+            restoreScrollPending = true;
+        }
         active = false; version++; columnDelay.Stop(); loading?.Cancel(); StopPan();
+        DetachScroller();
+        data.IsHitTestVisible = true;
     }
+
+    private void AttachScroller()
+    {
+        if (!active || !IsLoaded || dataScroller is not null) return;
+        dataScroller = FindScroller(data);
+        if (dataScroller is null) return;
+        dataScroller.ViewChanged += ScrollerViewChanged;
+        extentHeightToken = dataScroller.RegisterPropertyChangedCallback(ScrollViewer.ExtentHeightProperty, (_, _) => UpdateVerticalBar());
+        viewportHeightToken = dataScroller.RegisterPropertyChangedCallback(ScrollViewer.ViewportHeightProperty, (_, _) => UpdateVerticalBar());
+        canvas.Height = Math.Max(0, viewport.ActualHeight - 18);
+        UpdateVerticalBar();
+        UpdateWidth();
+        ScheduleScrollRestoration();
+    }
+
+    private void DetachScroller()
+    {
+        if (dataScroller is null) return;
+        dataScroller.ViewChanged -= ScrollerViewChanged;
+        dataScroller.UnregisterPropertyChangedCallback(ScrollViewer.ExtentHeightProperty, extentHeightToken);
+        dataScroller.UnregisterPropertyChangedCallback(ScrollViewer.ViewportHeightProperty, viewportHeightToken);
+        dataScroller = null;
+    }
+
+    private void ScrollerViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) => UpdateVerticalBar();
 
     private static ScrollViewer? FindScroller(DependencyObject node)
     {
@@ -169,7 +229,7 @@ public sealed class ParserTableView : UserControl
             if (pan.Active) { StopPan(); e.Handled = true; return; }
             if (!point.Properties.IsMiddleButtonPressed || point.Position.X < 0 || point.Position.Y < 0
                 || point.Position.X > viewport.ActualWidth || point.Position.Y > viewport.ActualHeight) return;
-            dataScroller ??= FindScroller(data);
+            AttachScroller();
             pan.Begin(point.Position.X, point.Position.Y);
             CapturePointer(e.Pointer); Focus(FocusState.Programmatic);
             ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeAll);
@@ -210,8 +270,18 @@ public sealed class ParserTableView : UserControl
     public async Task LoadAsync(LogPage? current)
     {
         active = true; page = current;
+        var reuse = current is not null && ReferenceEquals(current, renderedPage) && !columnsDirty && renderedTheme == ActualTheme;
+        if (!reuse) restoreScrollPending = false;
+        AttachScroller();
+        if (reuse)
+        {
+            openButton.IsEnabled = data.SelectedItem is TableRow;
+            return;
+        }
         if (current is null)
         {
+            renderedPage = null;
+            columnsDirty = true;
             version++; loading?.Cancel(); data.ItemsSource = null; frozenHeader.Children.Clear(); scrollingHeader.Children.Clear();
             canvas.Width = 100;
             status.Text = "Parse a log to show messages in a table."; openButton.IsEnabled = false;
@@ -283,7 +353,13 @@ public sealed class ParserTableView : UserControl
         Grid.SetRow(scroll, 2); picker.Children.Add(scroll);
         var presenter = new Style(typeof(FlyoutPresenter));
         presenter.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 560d));
-        columnsButton.Flyout = new Flyout { Content = picker, FlyoutPresenterStyle = presenter };
+        var flyout = new Flyout { Content = picker, FlyoutPresenterStyle = presenter };
+        flyout.Opening += (_, _) =>
+        {
+            picker.Width = Math.Max(160, Math.Min(460, ActualWidth - 48));
+            picker.Height = Math.Max(120, Math.Min(420, ActualHeight - 56));
+        };
+        columnsButton.Flyout = flyout;
         updatingChoices = false;
     }
     private void SetPinned(string key, bool freeze)
@@ -296,6 +372,7 @@ public sealed class ParserTableView : UserControl
     private void ColumnsChanged()
     {
         if (updatingChoices) return;
+        columnsDirty = true;
         columnsButton.Content = $"Columns ({choices.Count(c => c.Box.IsChecked == true)})";
         columnDelay.Stop(); columnDelay.Start();
     }
@@ -303,6 +380,7 @@ public sealed class ParserTableView : UserControl
     private async Task ReloadAsync()
     {
         if (!active || page is null) return;
+        columnsDirty = true;
         StopPan();
         var request = ++version;
         loading?.Cancel();
@@ -330,7 +408,7 @@ public sealed class ParserTableView : UserControl
                 column.Fit(fittedWidths[c.Key]);
                 return column;
             }).ToArray();
-            frozenCount = visibleColumns.TakeWhile(c => pinned.Contains(c.Definition.Key)).Count();
+            frozenCount = FittingFrozenCount();
             BuildHeaderAndTemplate();
             var summaries = current.Rows.ToDictionary(r => r.Id);
             var highContrast = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
@@ -377,11 +455,14 @@ public sealed class ParserTableView : UserControl
                 return new TableRow(r.Id, visibleColumns.Select(Cell).ToArray(), visibleColumns, colors.Background, colors.Accent, layout);
             }).ToArray();
             if (data.Items.Count > 0) data.SelectedIndex = 0;
+            ToolTipService.SetToolTip(status, "Right-click headers to freeze or fit columns. Hold the middle button and point to scroll; release or Esc to stop.");
             status.Text = selected.Length == 0 ? "Choose at least one column to display." :
-                $"{projected.Rows.Count:N0} messages on this page · right-click headers to freeze or fit · hold the middle button and point to scroll; release or Esc to stop."
-                + " Field markers: red violation, yellow review."
+                $"{projected.Rows.Count:N0} messages · red: violation · yellow: review"
                 + (projected.ValuesShortened ? " Long values are shortened previews; open the message for full values." : "")
                 + (workspace.TableColumnsLimited ? " Some field columns exceed table preview limits; open a message to inspect them." : "");
+            renderedPage = current;
+            renderedTheme = ActualTheme;
+            columnsDirty = false;
         }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException) { }
@@ -429,8 +510,58 @@ public sealed class ParserTableView : UserControl
         return result;
     }
 
+    private void UpdateVerticalBar()
+    {
+        if (!active || !IsLoaded || dataScroller is null) return;
+        ScheduleScrollRestoration();
+        syncingVerticalBar = true;
+        try
+        {
+            verticalBar.Maximum = dataScroller.ScrollableHeight;
+            verticalBar.ViewportSize = dataScroller.ViewportHeight;
+            verticalBar.LargeChange = dataScroller.ViewportHeight;
+            verticalBar.Value = dataScroller.VerticalOffset;
+            verticalBar.Visibility = dataScroller.ScrollableHeight > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        finally { syncingVerticalBar = false; }
+    }
+
+    private void ScheduleScrollRestoration()
+    {
+        if (!restoreScrollPending || restoreScrollQueued) return;
+        restoreScrollQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            restoreScrollQueued = false;
+            RestoreScrollPosition();
+        });
+    }
+
+    private void RestoreScrollPosition()
+    {
+        if (!restoreScrollPending || !active || !IsLoaded || dataScroller is null
+            || dataScroller.ViewportHeight <= 0 || dataScroller.ExtentHeight <= 0) return;
+        // WinUI resets the native scroll viewport when the cached visual tree is reattached.
+        restoreScrollPending = false;
+        dataScroller.ChangeView(null, savedVerticalOffset, null, disableAnimation: true);
+        viewport.ChangeView(savedHorizontalOffset, null, null, disableAnimation: true);
+    }
+
+    private int FittingFrozenCount() => ParserResultPresentation.FrozenColumnCount(
+        visibleColumns.Select(c => c.Width).ToArray(),
+        visibleColumns.TakeWhile(c => pinned.Contains(c.Definition.Key)).Count(), viewport.ActualWidth);
+
+    private void UpdateFrozenColumns()
+    {
+        if (!active || !IsLoaded) return;
+        var fitting = FittingFrozenCount();
+        if (fitting == frozenCount) return;
+        frozenCount = fitting;
+        BuildHeaderAndTemplate();
+    }
+
     private void UpdateWidth()
     {
+        UpdateFrozenColumns();
         canvas.Width = Math.Max(100, visibleColumns.Sum(c => c.Width) + 20);
         layout.FrozenWidth = visibleColumns.Take(frozenCount).Sum(c => c.Width);
         frozenHeaderPanel.Width = layout.FrozenWidth;
@@ -455,7 +586,7 @@ public sealed class ParserTableView : UserControl
             cell.Children.Add(label);
             ToolTipService.SetToolTip(label, column.Definition.Header + (index < frozenCount ? " · frozen" : "") + ". Right-click to freeze/unfreeze or fit this column.");
             var menu = new MenuFlyout();
-            var freeze = new MenuFlyoutItem { Text = index < frozenCount ? "Unfreeze column" : "Freeze column" };
+            var freeze = new MenuFlyoutItem { Text = pinned.Contains(column.Definition.Key) ? "Unfreeze column" : "Freeze column" };
             freeze.Click += (_, _) => SetPinned(column.Definition.Key, !pinned.Contains(column.Definition.Key));
             var fit = new MenuFlyoutItem { Text = "Fit to contents" };
             fit.Click += (_, _) => column.ResetWidth();

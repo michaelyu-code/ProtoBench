@@ -4,47 +4,6 @@ namespace ProtoBench.Application.Tests;
 
 public sealed class ParserResultPresentationTests
 {
-    [Theory]
-    [InlineData(1000, true, 980, 980)]
-    [InlineData(560, true, 520, 520)]
-    [InlineData(560, false, 520, 560)]
-    [InlineData(2000, false, 1200, 1000)]
-    [InlineData(100, false, 400, 240)]
-    [InlineData(double.PositiveInfinity, true, double.PositiveInfinity, 600)]
-    public void MessageListHasABoundedViewportAndMatchesTheInspectorWhenBeside(double available, bool beside,
-        double inspector, double expected)
-    {
-        Assert.Equal(expected, ParserResultPresentation.MessagePaneHeight(available, beside, inspector));
-    }
-
-    [Theory]
-    [InlineData(1100, 180, 896)]
-    [InlineData(560, 180, 356)]
-    [InlineData(200, 180, 320)]
-    [InlineData(2000, 180, 1000)]
-    [InlineData(double.PositiveInfinity, 180, 600)]
-    public void DetailViewportReservesHeaderSpaceAndStaysUsable(double height, double header, double expected)
-    {
-        Assert.Equal(expected, ParserResultPresentation.DetailHeight(height, header));
-    }
-
-    [Theory]
-    [InlineData(360, 180, false, 320)]
-    [InlineData(560, 180, false, 356)]
-    [InlineData(560, 180, true, 356)]
-    [InlineData(1100, 180, false, 896)]
-    [InlineData(1100, 180, true, 896)]
-    [InlineData(double.PositiveInfinity, 180, true, 600)]
-    public void OpeningDetailsKeepsTheViewportStableOnScaledLaptopScreens(double height, double header,
-        bool stacked, double expected)
-    {
-        var tabHeight = ParserResultPresentation.DetailHeight(height, header, true, stacked);
-        Assert.Equal(expected, tabHeight);
-        // Narrow details replace the field list and own a scrolling viewport.
-        // Selecting a field must not grow the page beyond its previous budget.
-        Assert.Equal(ParserResultPresentation.DetailHeight(height, header), tabHeight);
-    }
-
     [Fact]
     public void NarrowWindowsStackDetailsAndKeepEveryTextRoleReadable()
     {
@@ -52,9 +11,9 @@ public sealed class ParserResultPresentationTests
         var layout = presentation.Arrange(600, 480, true, true);
         Assert.False(layout.MessagesBeside);
         Assert.False(layout.DetailsBeside);
-        Assert.Equal(12, presentation.BodyFontSize);
+        Assert.Equal(14, presentation.BodyFontSize);
         Assert.Equal(12, presentation.SmallFontSize);
-        Assert.Equal(16, presentation.HeadingFontSize);
+        Assert.Equal(18, presentation.HeadingFontSize);
     }
 
     [Fact]
@@ -157,7 +116,7 @@ public sealed class ParserResultPresentationTests
     {
         var presentation = new ParserResultPresentation();
         presentation.Arrange(2000, 1600, true, false, availableHeight: 560);
-        Assert.Equal(12, presentation.BodyFontSize);
+        Assert.Equal(14, presentation.BodyFontSize);
         Assert.Equal(12, presentation.SmallFontSize);
         Assert.Equal(0, presentation.FieldPadding);
         Assert.Equal(1, presentation.CardPadding);
@@ -172,5 +131,27 @@ public sealed class ParserResultPresentationTests
         presentation.Arrange(2000, 1600, false, false, availableHeight: 560);
         Assert.Equal(14, presentation.BodyFontSize);
         Assert.Equal(8, presentation.FieldPadding);
+    }
+
+    [Theory]
+    [InlineData(320, 0)]
+    [InlineData(600, 1)]
+    [InlineData(1200, 2)]
+    [InlineData(2400, 3)]
+    public void FrozenColumnsLeaveRoomToBrowseTheRemainingTable(double viewportWidth, int expected)
+    {
+        Assert.Equal(expected, ParserResultPresentation.FrozenColumnCount([180, 220, 240], 3, viewportWidth));
+    }
+
+    [Fact]
+    public void ShortWindowsKeepBodyTextReadableAcrossWidths()
+    {
+        var presentation = new ParserResultPresentation();
+        foreach (var width in new[] { 360d, 600, 900, 1600, 2400 })
+        {
+            presentation.Arrange(width, width - 48, true, true, availableHeight: 200);
+            Assert.InRange(presentation.BodyFontSize, 14, 16);
+            Assert.InRange(presentation.SmallFontSize, 12, 14);
+        }
     }
 }

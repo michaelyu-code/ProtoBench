@@ -67,6 +67,34 @@ Export a `PluginTool` with an ID, name, description, ordered `ToolInput` list an
 
 Each factory call must return a **new** `IPluginToolSession`. Its `ExecuteAsync` receives a read-only snapshot of input strings and a cancellation token, and returns `PluginToolResult(Text, Fields?)`. Execution is off the UI thread; never access WinUI controls from this method. Honor cancellation and enforce resource limits appropriate to the operation. The host disables Run during execution. Closing a tab cancels its operation and disposes the session after that operation ends; a non-cooperative session can delay its own disposal. Treat masked input as ordinary managed strings, not guaranteed-erased secret storage.
 
+## Calculator plugins and shared utilities
+
+Calculator plugins can use the same standard responsive Inputs/Results layout as other tools. Export a `PluginTool` with `ActionLabel: "Calculate"`, ordered text/secret/choice inputs, and a fresh `IPluginToolSession` per tab. Return the result and any explanation in `PluginToolResult.Text`. The optional WinUI SDK supports custom controls, including checkboxes; the standard form supports boolean options using a Choice input with Yes/No values.
+
+The developer kit includes `ProtoBench.Utilities.dll` through `sdk/ProtoBench.PluginSdk.props`. Repository plugins also receive it transitively through the portable SDK. Developers can reuse `ProtoBench.Utilities.Binary.TripleDesCalculator.Transform`, `KeyCheckValue`, and `TransformDetailed` instead of reimplementing 3DES. The detailed API returns separate `Output` and `Details` strings, shows padding and block-level chaining, and includes key components only when `includeKeyValues: true` is explicitly passed. It does not trace DES's internal rounds. Built-in desktop view factories are internal app UI, not public SDK templates.
+
+For example, a standard-form KCV calculator can export:
+
+```csharp
+new PluginTool("acme.kcv", "3DES KCV", "Calculate an encrypt-zero key check value.",
+    [new ToolInput("key", "3DES key (hex)", ToolInputKind.Secret, Required: true)],
+    () => new KcvSession(), ActionLabel: "Calculate");
+
+public sealed class KcvSession : IPluginToolSession
+{
+    public Task<PluginToolResult> ExecuteAsync(IReadOnlyDictionary<string, string> inputs,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var kcv = ProtoBench.Utilities.Binary.TripleDesCalculator.KeyCheckValue(inputs["key"]);
+        return Task.FromResult(new PluginToolResult(kcv));
+    }
+    public void Dispose() { }
+}
+```
+
+Rebuild against the matching updated kit and host to use newly added utility APIs.
+
 ## Telnet server profiles
 
 Export `IToolkitPlugin.TelnetServers` to add options to **Utilities → Test Telnet Server → Server profile**:

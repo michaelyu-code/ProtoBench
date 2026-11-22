@@ -33,7 +33,10 @@ public sealed class MainWindow : Window
         AlwaysShowHeader = false,
         IsPaneToggleButtonVisible = false
     };
-    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.Equal, VerticalAlignment = VerticalAlignment.Stretch };
+    // TabView registers Ctrl+F4 on the entire control, including its workspace content.
+    // Hide the automatic accelerator tooltip while retaining the tab shortcuts.
+    private readonly TabView tabs = new() { IsAddTabButtonVisible = true, TabWidthMode = TabViewWidthMode.Equal,
+        VerticalAlignment = VerticalAlignment.Stretch, KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden };
     private readonly InfoBar notification = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly InfoBar updateNotification = new() { IsClosable = true, Severity = InfoBarSeverity.Informational, Title = "Update available" };
     private Task<UpdateRelease?>? startupUpdateCheck;
@@ -129,7 +132,7 @@ public sealed class MainWindow : Window
             {
                 Content = category.Key.DisplayName(),
                 Tag = category.Key,
-                Icon = new SymbolIcon(CategoryIcon(category.Key)),
+                Icon = new FontIcon { Glyph = NavigationIcons.Category(category.Key) },
                 SelectsOnInvoked = true,
                 IsExpanded = vm.Tools.Tools.Count <= 8
             };
@@ -144,7 +147,7 @@ public sealed class MainWindow : Window
             var compact = new NavigationViewItem
             {
                 Content = group.Content, Tag = category.Key,
-                Icon = new SymbolIcon(CategoryIcon(category.Key))
+                Icon = new FontIcon { Glyph = NavigationIcons.Category(category.Key) }
             };
             ToolTipService.SetToolTip(compact, $"{category.Key.DisplayName()} · {category.Count()} tools");
             compactCategoryItems.Add(category.Key, compact);
@@ -419,7 +422,9 @@ public sealed class MainWindow : Window
         var autoScroll = new CheckBox
         {
             Content = Ui.Text("Automatically scroll to results after parsing"),
-            IsChecked = vm.Settings.Current.AutoScrollParserResults
+            IsChecked = vm.Settings.Current.AutoScrollParserResults,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         autoScroll.Click += async (_, _) =>
         {
@@ -431,7 +436,9 @@ public sealed class MainWindow : Window
         var autoFit = new CheckBox
         {
             Content = Ui.Text("Auto-fit log parser results to the window"),
-            IsChecked = vm.Settings.Current.AutoFitParserResults
+            IsChecked = vm.Settings.Current.AutoFitParserResults,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         autoFit.Click += async (_, _) =>
         {
@@ -443,7 +450,9 @@ public sealed class MainWindow : Window
         var verboseChecks = new CheckBox
         {
             Content = Ui.Text("Verbose checks — show what was checked for each field"),
-            IsChecked = vm.Settings.Current.VerboseParserChecks
+            IsChecked = vm.Settings.Current.VerboseParserChecks,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         verboseChecks.Click += async (_, _) =>
         {
@@ -452,44 +461,51 @@ public sealed class MainWindow : Window
             catch (Exception ex) { verboseChecks.IsChecked = vm.Settings.Current.VerboseParserChecks; Report(ex); }
             finally { verboseChecks.IsEnabled = true; }
         };
+        var localFiles = ToolLayout.Section("Local files and definitions", Ui.Text(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory),
+            Ui.AsyncButton("Open log folder", async () =>
+            {
+                var directory = ProtoBench.Infrastructure.Configuration.AppPaths.LogDirectory;
+                Directory.CreateDirectory(directory);
+                var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(directory);
+                if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
+                    throw new InvalidOperationException("The log folder could not be opened.");
+            }, Report),
+            Ui.AsyncButton("Open schema JSON folder", async () =>
+            {
+                var directory = Path.Combine(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory, "definitions");
+                Directory.CreateDirectory(Path.Combine(directory, "parsers"));
+                Directory.CreateDirectory(Path.Combine(directory, "generators"));
+                var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(directory);
+                if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
+                    throw new InvalidOperationException("The schema JSON folder could not be opened.");
+            }, Report),
+            new Expander { Header = "Definitions and logging details", HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = ToolLayout.Stack(
+                    Ui.Text("Put schema-version 1 JSON files in definitions/parsers or definitions/generators under this directory, then restart. Give customized definitions unique IDs. Bundled defaults remain separate."),
+                    Ui.Text("Log Parser streams logs into a temporary disk index. Search covers the full log. Oversized records produce diagnostics; legacy parser plugins need the streaming API for inputs above 16 MiB."),
+                    Ui.Text("Local error logs include exception types, error codes and method stack traces. Exception messages, record contents and file paths are excluded.")) },
+            Ui.Text("Reload the app to apply plugin and custom definition changes."),
+            Ui.AsyncButton("Reload app", ReloadAppAsync, Report));
+        var removeLocalData = ToolLayout.Section("Remove local data",
+            Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
+            Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report));
+        var sections = ToolLayout.Columns(420,
+            ToolLayout.Stack(
+                ToolLayout.Section("Appearance", theme),
+                ToolLayout.Section("Log Parser", autoScroll, autoFit, verboseChecks),
+                localFiles),
+            ToolLayout.Stack(CreatePluginPanel(), CreateUpdatePanel(), removeLocalData));
+        // Page scrolls its first child. Keep every settings section inside that one
+        // adaptive surface so short windows can reach the bottom of the page.
+        var settingsPage = ToolLayout.Page("Settings", "Preferences and local app management.", sections);
+        settingsPage.MaxWidth = 1280;
         settingsTab = new TabViewItem
         {
             Header = "Settings",
             Tag = "settings",
             IsClosable = true,
-            Content = ToolLayout.Page("Settings", "Preferences and local app management.",
-                    ToolLayout.Section("Appearance", theme),
-                    ToolLayout.Section("Log Parser", autoScroll, autoFit, verboseChecks),
-                    CreatePluginPanel(), CreateUpdatePanel(),
-                    ToolLayout.Section("Local files and definitions", Ui.Text(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory),
-                    Ui.AsyncButton("Open log folder", async () =>
-                    {
-                        var directory = ProtoBench.Infrastructure.Configuration.AppPaths.LogDirectory;
-                        Directory.CreateDirectory(directory);
-                        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(directory);
-                        if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
-                            throw new InvalidOperationException("The log folder could not be opened.");
-                    }, Report),
-                    Ui.AsyncButton("Open schema JSON folder", async () =>
-                    {
-                        var directory = Path.Combine(ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory, "definitions");
-                        Directory.CreateDirectory(Path.Combine(directory, "parsers"));
-                        Directory.CreateDirectory(Path.Combine(directory, "generators"));
-                        var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(directory);
-                        if (!await Windows.System.Launcher.LaunchFolderAsync(folder))
-                            throw new InvalidOperationException("The schema JSON folder could not be opened.");
-                    }, Report),
-                    new Expander { Header = "Definitions and logging details", HorizontalAlignment = HorizontalAlignment.Stretch,
-                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                        Content = ToolLayout.Stack(
-                            Ui.Text("Put schema-version 1 JSON files in definitions/parsers or definitions/generators under this directory, then restart. Give customized definitions unique IDs. Bundled defaults remain separate."),
-                            Ui.Text("Log Parser streams logs into a temporary disk index. Search covers the full log. Oversized records produce diagnostics; legacy parser plugins need the streaming API for inputs above 16 MiB."),
-                            Ui.Text("Local error logs include exception types, error codes and method stack traces. Exception messages, record contents and file paths are excluded.")) },
-                    Ui.Text("Reload the app to apply plugin and custom definition changes."),
-                    Ui.AsyncButton("Reload app", ReloadAppAsync, Report)),
-                    ToolLayout.Section("Remove local data",
-                        Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
-                        Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report)))
+            Content = settingsPage
         };
         tabs.TabItems.Add(settingsTab);
         tabs.SelectedItem = settingsTab;
@@ -587,10 +603,11 @@ public sealed class MainWindow : Window
 
     private UIElement CreateUpdatePanel()
     {
-        var panel = new StackPanel { Spacing = 12, Visibility = updates.Enabled ? Visibility.Visible : Visibility.Collapsed };
-        updatePanel = panel;
-        if (!updates.Enabled) return panel;
-        panel.Children.Add(Ui.Heading("Updates"));
+        var panel = ToolLayout.Stack();
+        var section = ToolLayout.Section("Updates", panel);
+        section.Visibility = updates.Enabled ? Visibility.Visible : Visibility.Collapsed;
+        updatePanel = section;
+        if (!updates.Enabled) return section;
         panel.Children.Add(Ui.Text($"Current version: {updates.CurrentVersion}"));
         var status = Ui.Text("Check for a new release when you are ready.");
         var notes = Ui.Text("");
@@ -664,18 +681,6 @@ public sealed class MainWindow : Window
         panel.Children.Add(notes);
         panel.Children.Add(install);
         panel.Children.Add(downloadPage);
-        return panel;
+        return section;
     }
-
-    private static Symbol CategoryIcon(ToolCategory category) => category switch
-    {
-        ToolCategory.Parsers => Symbol.Document,
-        ToolCategory.Converters => Symbol.Calculator,
-        ToolCategory.Calculators => Symbol.Calculator,
-        ToolCategory.Generators => Symbol.Save,
-        ToolCategory.Comparisons => Symbol.Switch,
-        _ => Symbol.Repair
-    };
 }
-
-

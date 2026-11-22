@@ -65,7 +65,7 @@ public static class ToolLayout
         var resultStatus = new ContentControl { Content = Ui.BoundText(source, nameof(source.Status)), HorizontalContentAlignment = HorizontalAlignment.Stretch };
         Grid.SetRow(resultStatus, 2); Grid.SetColumnSpan(resultStatus, 2);
         Grid.SetColumnSpan(navigation, 2);
-        var inputScroll = Scroll(input);
+        FrameworkElement inputScroll = input is ResultCard ? input : Scroll(input);
         FrameworkElement outputScroll = output is ResultCard ? output : Scroll(output);
         host.Children.Add(navigation); host.Children.Add(inputScroll); host.Children.Add(outputScroll);
         host.Children.Add(resultStatus);
@@ -137,7 +137,8 @@ public static class ToolLayout
     };
 
     /// <summary>A bounded result editor that uses the available pane height.</summary>
-    public static FrameworkElement TextResult(string title, RawTextViewer viewer, Button copy, TextBlock feedback)
+    public static FrameworkElement TextResult(string title, RawTextViewer viewer, Button copy, TextBlock feedback, Button? secondaryCopy = null,
+        FrameworkElement? aboveResult = null)
     {
         viewer.Header = null;
         viewer.CompactViewport = false;
@@ -154,11 +155,16 @@ public static class ToolLayout
         Grid.SetColumn(copy, 1); header.Children.Add(copy);
         var layout = new Grid { RowSpacing = 10 };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.Children.Add(header);
-        Grid.SetRow(viewer, 1); layout.Children.Add(viewer);
-        Grid.SetRow(feedback, 2); layout.Children.Add(feedback);
+        if (aboveResult is not null) { Grid.SetRow(aboveResult, 1); layout.Children.Add(aboveResult); }
+        Grid.SetRow(viewer, 2); layout.Children.Add(viewer);
+        var footer = new StackPanel { Spacing = 8 };
+        if (secondaryCopy is not null) footer.Children.Add(secondaryCopy);
+        footer.Children.Add(feedback);
+        Grid.SetRow(footer, 3); layout.Children.Add(footer);
         var style = (Border)Section("");
         style.Child = layout;
         var card = new ResultCard();

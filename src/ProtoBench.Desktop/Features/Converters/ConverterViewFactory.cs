@@ -25,6 +25,11 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         result.SetBinding(TextBox.TextProperty, new Microsoft.UI.Xaml.Data.Binding { Source = vm, Path = new PropertyPath("Output"), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         var copyStatus = Ui.Text("");
         var removeSpaces = new CheckBox { Content = "Remove spaces from input" };
+        var compactHex = new CheckBox { Content = "Compact hex output (no spaces)" };
+        compactHex.SetBinding(CheckBox.IsCheckedProperty, new Microsoft.UI.Xaml.Data.Binding
+        {
+            Source = vm, Path = new PropertyPath(nameof(vm.CompactHexOutput)), Mode = Microsoft.UI.Xaml.Data.BindingMode.TwoWay
+        });
         removeSpaces.SetBinding(CheckBox.IsCheckedProperty, new Microsoft.UI.Xaml.Data.Binding
         {
             Source = vm,
@@ -50,6 +55,7 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         void UpdateMode()
         {
             numericOptions.Visibility = vm.Mode == ConversionMode.Numeric ? Visibility.Visible : Visibility.Collapsed;
+            compactHex.Visibility = vm.ProducesHex ? Visibility.Visible : Visibility.Collapsed;
             encoding.Visibility = vm.Mode is ConversionMode.AsciiToHex or ConversionMode.HexToAscii or ConversionMode.AsciiHexToCp500 or ConversionMode.Cp500ToAsciiHex ? Visibility.Visible : Visibility.Collapsed;
             input.AcceptsReturn = vm.Mode != ConversionMode.Numeric;
             input.MinHeight = vm.Mode == ConversionMode.Numeric ? 32 : 120;
@@ -71,7 +77,7 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
             Ui.Primary(new Button { Content = "Convert", Command = vm.ConvertCommand }), Ui.BoundText(vm, "Error"),
             Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, "Status")));
         var copy = Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } });
-        var results = ToolLayout.TextResult("Results", result, copy, copyStatus);
+        var results = ToolLayout.TextResult("Results", result, copy, copyStatus, aboveResult: compactHex);
         return ToolLayout.Page("Base Converter", "Numeric bases, text encodings and EBCDIC CP500.",
             ToolLayout.Workspace(vm, inputs, results, () => vm.Output.Length > 0),
             ToolLayout.Help(help));

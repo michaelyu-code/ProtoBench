@@ -4,27 +4,24 @@ namespace ProtoBench.Desktop.Features.Parsers;
 
 public sealed record ParserPaneLayout(bool MessagesBeside, double MessageWidth, bool DetailsBeside, double DetailWidth);
 
-/// <summary>Responsive layout and shared typography for all result templates; never scales text below 12 DIPs.</summary>
+/// <summary>Responsive layout and shared typography for all result templates; keeps body text at least 14 DIPs.</summary>
 public sealed class ParserResultPresentation : ObservableObject
 {
-    // These are logical pixels, so Windows display scaling is already accounted for.
-    // Keep one stable viewport across message and field selections. Short detail
-    // panels scroll their complete content instead of increasing the page height.
-    public static double DetailHeight(double availableHeight, double headerHeight,
-        bool showingDetails = false, bool stackedDetails = false)
+    // Keep enough room for horizontally scrolling columns on smaller windows.
+    // Freeze preferences are retained; more columns can become frozen again after resizing.
+    public static int FrozenColumnCount(IReadOnlyList<double> widths, int requestedCount, double viewportWidth)
     {
-        // Narrow layouts navigate into details instead of reserving a second
-        // field list above them. The panel scrolls when its header is long.
-        const double minimum = 320;
-        return double.IsFinite(availableHeight) && double.IsFinite(headerHeight)
-            ? Math.Clamp(availableHeight - Math.Max(0, headerHeight) - 24, minimum, 1000)
-            : Math.Max(minimum, 600);
+        var budget = double.IsFinite(viewportWidth) ? Math.Max(0, Math.Min(viewportWidth * 0.45, viewportWidth - 160)) : 0;
+        double used = 0;
+        var count = 0;
+        foreach (var width in widths.Take(Math.Max(0, requestedCount)))
+        {
+            if (!double.IsFinite(width) || width <= 0 || used + width > budget) break;
+            used += width;
+            count++;
+        }
+        return count;
     }
-
-    // List length never participates in the shared result row's height.
-    public static double MessagePaneHeight(double availableHeight, bool beside, double inspectorHeight) =>
-        beside ? Math.Clamp(double.IsFinite(inspectorHeight) ? inspectorHeight : 600, 320, 1400)
-            : Math.Clamp(double.IsFinite(availableHeight) ? availableHeight : 600, 240, 1000);
 
     private double bodyFontSize = 14, smallFontSize = 12, headingFontSize = 18;
     private double cardGap = 3, cardPadding = 8, fieldGap = 3, fieldPadding = 8, panelGap = 8;
@@ -58,8 +55,8 @@ public sealed class ParserResultPresentation : ObservableObject
         var tightDetails = crowdedDetails && decodedRowCount * 48d + 280 > availableHeight;
         var compact = autoFit && double.IsFinite(availableHeight) && availableHeight < 760;
         var tight = compact && availableHeight < 620;
-        var fontCeiling = compact ? tight ? 12 : 14 : 16;
-        BodyFontSize = autoFit ? Math.Clamp(Math.Round(inspectorWidth / 70), 12, fontCeiling) : 14;
+        var fontCeiling = compact ? 14 : 16;
+        BodyFontSize = autoFit ? Math.Clamp(Math.Round(inspectorWidth / 70), 14, fontCeiling) : 14;
         SmallFontSize = autoFit ? Math.Clamp(BodyFontSize - 2, 12, 14) : 12;
         HeadingFontSize = BodyFontSize + 4;
         CompactCards = compact;

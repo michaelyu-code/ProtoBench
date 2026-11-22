@@ -6,6 +6,30 @@ namespace ProtoBench.Application.Tests;
 
 public sealed class ConverterWorkspaceTests
 {
+    [Theory]
+    [InlineData(ConversionMode.AsciiToHex, "A B", "41 20 42")]
+    [InlineData(ConversionMode.TextToCp500, "A B", "C1 40 C2")]
+    [InlineData(ConversionMode.AsciiHexToCp500, "41 20 42", "C1 40 C2")]
+    [InlineData(ConversionMode.Cp500ToAsciiHex, "C1 40 C2", "41 20 42")]
+    public async Task CompactHexReformatsExistingResultsWithoutChangingTextData(ConversionMode mode, string input, string spaced)
+    {
+        using var workspace = new ConverterWorkspace(new BaseConverter(), new AsciiHexConverter(), new Cp500Converter())
+        { Mode = mode, Input = input };
+        await workspace.ConvertCommand.ExecuteAsync(null);
+        Assert.True(workspace.ProducesHex);
+        Assert.Equal(spaced, workspace.Output);
+        workspace.CompactHexOutput = true;
+        Assert.Equal(spaced.Replace(" ", ""), workspace.Output);
+        workspace.CompactHexOutput = false;
+        Assert.Equal(spaced, workspace.Output);
+        workspace.CompactHexOutput = true;
+        workspace.Input = "41 20 42";
+        workspace.Mode = ConversionMode.HexToAscii;
+        await workspace.ConvertCommand.ExecuteAsync(null);
+        Assert.False(workspace.ProducesHex);
+        Assert.Equal("A B", workspace.Output);
+    }
+
     [Fact]
     public async Task SelectedEncodingAppliesToBothDirectionsAndCp500Transcoding()
     {
