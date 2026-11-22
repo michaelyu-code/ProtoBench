@@ -1,5 +1,11 @@
 # Verification record
 
+## Update proxy fallback — 23 November 2026
+
+Version 2.0.11 adds a saved Fallback proxy address textbox and Save proxy action under Updates. Blank disables the fallback; HTTP(S) host/port addresses are normalized and validated before persistence. Startup waits for settings to load before checking. Update requests use the normal OS connection first, then retry once through the configured proxy on connection/timeout failures, blocking HTTP statuses or server errors. The same downloader covers portable manifests and installed GitHub API/feed/package traffic. Package retries truncate partial output, and cancellation/local file errors do not trigger another route. HTTPS and Velopack package verification remain unchanged. Browser download-page navigation uses browser settings.
+
+The Release solution build passed with zero warnings/errors. All 587 tests passed with the existing opt-in 2-GiB case skipped. Thirty-one new cases cover address validation, normal-path success, fallback triggers, timeout versus cancellation, blank/changed settings, failed proxies, header/timeout propagation, partial files, portable manifests, saved settings, real loopback HTTP proxy routing, and the GitHub source's API/feed/package path through a simulated proxy. Existing settings JSON tests also verify persistence and the empty default for older files. The native textbox and a real corporate HTTPS proxy/install/restart cycle have not had an interactive smoke check.
+
 ## SDK structured tool results — 23 November 2026
 
 Version 2.0.10 adds optional search and field-decoder result contracts to API 2, with shared WinUI host rendering. Search presents ordered hits, excerpts, a selected passage, literal term emphasis, source labels and collapsed ranking/raw details. Decoding presents status, raw value, summary, labeled component/value/meaning rows, expandable children, warnings, context, references and copy actions. Integer and supporting-field inputs, optional input groups, and input-edit invalidation are available to standard portable plugins. Existing text/tree tools and custom WinUI providers remain supported.

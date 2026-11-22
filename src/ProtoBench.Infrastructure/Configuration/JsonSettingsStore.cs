@@ -17,7 +17,7 @@ public sealed class JsonSettingsStore(string path, IAtomicFileWriter writer) : I
         if (stream.Length > 1048576)
             throw new InvalidDataException("Settings exceed the 1 MiB limit.");
         var settings = await JsonSerializer.DeserializeAsync<LocalSettings>(stream, cancellationToken: cancellationToken) ?? throw new InvalidDataException("Settings are empty.");
-        if (settings.SchemaVersion != 1 || settings.FavoriteTools is null || settings.RecentFiles is null || settings.Theme is not ("Default" or "Light" or "Dark"))
+        if (settings.SchemaVersion != 1 || settings.FavoriteTools is null || settings.RecentFiles is null || settings.UpdateProxyAddress is null || settings.Theme is not ("Default" or "Light" or "Dark"))
             throw new InvalidDataException("Invalid settings or unsupported settings version.");
         return settings;
     }

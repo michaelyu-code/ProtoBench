@@ -14,6 +14,14 @@ Open **Settings → Updates → Check for updates** to check again. Downloads an
 
 GitHub prereleases are excluded from the installed updater. GitHub's `releases/latest` URL directs portable users to the latest stable release. There is no preview update channel. Public GitHub checks are unauthenticated and subject to GitHub's rate limits.
 
+### Fallback proxy
+
+In update-enabled builds, **Settings → Updates → Fallback proxy address** accepts an HTTP(S) proxy such as `http://proxy.company:8080` (or `proxy.company:8080`). Select **Save proxy**, then **Check for updates**. The setting persists across restarts and takes effect on subsequent update requests without restarting. Clear the textbox and save to disable the fallback. The address may contain a host and port; credentials, paths, queries and fragments are not supported.
+
+Update requests first use the normal OS network configuration. Connection errors, timeouts, HTTP 403/407/408/429 and server errors retry once through the saved proxy. This covers the portable version manifest and the installed app's GitHub API, release feed and package downloads. Metadata requests wait at most 30 seconds per route; package download timeouts are unchanged. Cancellation, missing assets, invalid manifests and local file errors do not trigger the fallback. Normal HTTPS certificate validation and Velopack package verification remain in place.
+
+The **Open download page** action opens the system browser and uses that browser's network settings. This proxy setting applies only to requests made by ProtoBench's updater. Builds with updates disabled continue to make no update requests and hide the Updates section.
+
 ## Release assets
 
 Every release build creates the installer, portable ZIP, SDK ZIP and developer-kit ZIP, plus:

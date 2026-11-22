@@ -68,6 +68,34 @@ public sealed class UpdateTests
         finally { File.Delete(target); }
     }
 
+    [Fact]
+    public async Task GitHubApiFeedAndPackageAllUseTheProxyFallback()
+    {
+        var proxy = new GitHubDownloader();
+        var downloader = new UpdateProxyDownloader(() => "http://proxy.company:8080", new BlockedDownloader(), _ => proxy);
+        var source = VelopackUpdater.CreateSource("https://github.com/example/ProtoBench", downloader);
+        var feed = await source.GetReleaseFeed(new TestLogger(), "ProtoBench.Desktop", "win", null, null);
+        var target = Path.Combine(Path.GetTempPath(), "proxy-github-update-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await source.DownloadReleaseEntry(new TestLogger(), Assert.Single(feed.Assets), target, _ => { }, CancellationToken.None);
+            Assert.Equal("package bytes", await File.ReadAllTextAsync(target));
+            Assert.Equal(3, proxy.Requests.Count);
+        }
+        finally { File.Delete(target); }
+    }
+
+    private sealed class BlockedDownloader : IFileDownloader
+    {
+        public Task<string> DownloadString(string url, IDictionary<string, string>? headers = null, double timeout = 30) =>
+            throw new HttpRequestException("Blocked", null, HttpStatusCode.Forbidden);
+        public Task<byte[]> DownloadBytes(string url, IDictionary<string, string>? headers = null, double timeout = 30) =>
+            throw new HttpRequestException("Blocked", null, HttpStatusCode.Forbidden);
+        public Task DownloadFile(string url, string targetFile, Action<int> progress,
+            IDictionary<string, string>? headers = null, double timeout = 30, CancellationToken token = default) =>
+            throw new HttpRequestException("Blocked", null, HttpStatusCode.Forbidden);
+    }
+
     [Theory]
     [InlineData("http://github.com/example/ProtoBench")]
     [InlineData("https://user:password@github.com/example/ProtoBench")]

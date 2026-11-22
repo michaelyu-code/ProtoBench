@@ -65,12 +65,13 @@ public sealed class FoundationTests : IDisposable
         var store = new JsonSettingsStore(Path.Combine(directory, "settings.json"), new AtomicFileWriter());
         Assert.Empty((await store.LoadAsync()).FavoriteTools);
         Assert.True((await store.LoadAsync()).AutoScrollParserResults);
-        await store.SaveAsync(new LocalSettings { FavoriteTools = ["converter"], RecentFiles = ["sample.txt"], Theme = "Dark", AutoScrollParserResults = false, AutoFitParserResults = false });
+        await store.SaveAsync(new LocalSettings { FavoriteTools = ["converter"], RecentFiles = ["sample.txt"], Theme = "Dark", AutoScrollParserResults = false, AutoFitParserResults = false, UpdateProxyAddress = "http://proxy.company:8080" });
         var settings = await store.LoadAsync();
         Assert.Equal("Dark", settings.Theme);
         Assert.Equal("converter", Assert.Single(settings.FavoriteTools));
         Assert.False(settings.AutoScrollParserResults);
         Assert.False(settings.AutoFitParserResults);
+        Assert.Equal("http://proxy.company:8080", settings.UpdateProxyAddress);
     }
     [Fact]
     public async Task ExistingSettingsEnableParserAutoScrollByDefault()
@@ -81,6 +82,7 @@ public sealed class FoundationTests : IDisposable
         var settings = await new JsonSettingsStore(path, new AtomicFileWriter()).LoadAsync();
         Assert.True(settings.AutoScrollParserResults);
         Assert.True(settings.AutoFitParserResults);
+        Assert.Empty(settings.UpdateProxyAddress);
         Assert.Equal("Dark", settings.Theme);
     }
     [Fact]

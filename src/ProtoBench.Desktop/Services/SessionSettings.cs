@@ -29,4 +29,9 @@ public sealed class SessionSettings(ISettingsStore store)
     public Task SetParserAutoScrollAsync(bool enabled) => UpdateAsync(s => s with { AutoScrollParserResults = enabled });
     public Task SetParserAutoFitAsync(bool enabled) => UpdateAsync(s => s with { AutoFitParserResults = enabled });
     public Task SetVerboseParserChecksAsync(bool enabled) => UpdateAsync(s => s with { VerboseParserChecks = enabled });
+    public Task SetUpdateProxyAsync(string address)
+    {
+        var normalized = ProtoBench.Infrastructure.Updates.UpdateProxyAddress.Normalize(address);
+        return UpdateAsync(s => s with { UpdateProxyAddress = normalized });
+    }
 }

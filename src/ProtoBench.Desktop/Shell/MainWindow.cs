@@ -94,10 +94,9 @@ public sealed class MainWindow : Window
             ApplyNavigationPreference();
         };
         root.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
-        root.Loaded += async (_, _) =>
+        root.Loaded += (_, _) =>
         {
             UpdateTitleBarColors();
-            await CheckForUpdatesAtStartupAsync();
         };
         Closed += (_, _) => windowClosed = true;
         UpdateTitleBarColors();
@@ -244,6 +243,8 @@ public sealed class MainWindow : Window
             notification.IsOpen = true;
             logger.LogWarning(new EventId(101), "Definition validation failed");
         }
+        // Load persisted network preferences before starting the one automatic update check.
+        if (!windowClosed) await CheckForUpdatesAtStartupAsync();
     }
 
     private void Report(Exception ex)
@@ -618,6 +619,25 @@ public sealed class MainWindow : Window
         var check = new Button { Content = "Check for updates" };
         var install = new Button { Content = "Download update", Visibility = Visibility.Collapsed };
         var ready = false;
+        var proxyChanged = false;
+        var proxyAddress = new TextBox
+        {
+            Header = "Fallback proxy address", PlaceholderText = "http://proxy.company:8080",
+            Text = vm.Settings.Current.UpdateProxyAddress, MaxLength = 2048
+        };
+        var proxyStatus = Ui.Text("", 12);
+        var saveProxy = Ui.AsyncButton("Save proxy", async () =>
+        {
+            check.IsEnabled = install.IsEnabled = false;
+            try
+            {
+                await vm.Settings.SetUpdateProxyAsync(proxyAddress.Text);
+                proxyAddress.Text = vm.Settings.Current.UpdateProxyAddress;
+                proxyChanged = true;
+                proxyStatus.Text = proxyAddress.Text.Length == 0 ? "Proxy fallback disabled." : "Proxy saved. It will be tried if the normal connection fails.";
+            }
+            finally { check.IsEnabled = install.IsEnabled = true; }
+        }, ex => proxyStatus.Text = ex.Message);
         var downloadPage = Ui.AsyncButton("Open download page", async () =>
         {
             if (!await Windows.System.Launcher.LaunchUriAsync(updates.DownloadPage))
@@ -640,6 +660,7 @@ public sealed class MainWindow : Window
         check.Click += async (_, _) =>
         {
             check.IsEnabled = false;
+            proxyAddress.IsEnabled = saveProxy.IsEnabled = false;
             install.Visibility = Visibility.Collapsed;
             ready = false;
             hasUpdateCheckResult = false;
@@ -647,15 +668,20 @@ public sealed class MainWindow : Window
             status.Text = "Checking for updates…";
             try
             {
+                // If the proxy was saved after startup began, let that request finish and then retry with the new setting.
+                if (proxyChanged && startupUpdateCheck is { IsCompleted: false })
+                    try { await startupUpdateCheck; } catch { }
                 var release = await (startupUpdateCheck is { IsCompleted: false } ? startupUpdateCheck : updates.CheckAsync());
                 DisplayRelease(release);
+                proxyChanged = false;
             }
             catch { status.Text = "Could not check for updates. Try again or open the download page."; }
-            finally { check.IsEnabled = true; }
+            finally { check.IsEnabled = proxyAddress.IsEnabled = saveProxy.IsEnabled = true; }
         };
         install.Click += async (_, _) =>
         {
             install.IsEnabled = check.IsEnabled = false;
+            proxyAddress.IsEnabled = saveProxy.IsEnabled = false;
             try
             {
                 if (!ready)
@@ -678,8 +704,12 @@ public sealed class MainWindow : Window
                 }
             }
             catch { status.Text = "Could not install the update. Try again or open the download page."; }
-            finally { install.IsEnabled = check.IsEnabled = true; }
+            finally { install.IsEnabled = check.IsEnabled = proxyAddress.IsEnabled = saveProxy.IsEnabled = true; }
         };
+        panel.Children.Add(proxyAddress);
+        panel.Children.Add(Ui.Text("Optional HTTP(S) proxy for update checks and downloads. The normal connection is tried first. Leave blank and save to disable.", 12));
+        panel.Children.Add(saveProxy);
+        panel.Children.Add(proxyStatus);
         panel.Children.Add(check);
         panel.Children.Add(status);
         panel.Children.Add(notes);

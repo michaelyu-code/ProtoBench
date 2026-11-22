@@ -7,6 +7,7 @@ public sealed record LocalSettings
     public bool AutoScrollParserResults { get; init; } = true;
     public bool AutoFitParserResults { get; init; } = true;
     public bool VerboseParserChecks { get; init; }
+    public string UpdateProxyAddress { get; init; } = "";
     public List<string> FavoriteTools { get; init; } = [];
     public List<string> RecentFiles { get; init; } = [];
 }

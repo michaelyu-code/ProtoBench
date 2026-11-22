@@ -67,9 +67,12 @@ public partial class App : Microsoft.UI.Xaml.Application
         var collection = new ServiceCollection();
         var updateOptions = UpdateOptions.FromAssembly(typeof(App).Assembly);
         collection.AddSingleton(_ => new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30), MaxResponseContentBufferSize = 65536 });
+        collection.AddSingleton(sp => new UpdateProxyDownloader(() => sp.GetRequiredService<SessionSettings>().Current.UpdateProxyAddress));
         collection.AddSingleton(sp => new UpdateService(updateOptions,
             System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(App).Assembly)?.InformationalVersion ?? "1.0.0",
-            sp.GetRequiredService<System.Net.Http.HttpClient>(), () => new VelopackUpdater(updateOptions.FeedUrl)));
+            sp.GetRequiredService<System.Net.Http.HttpClient>(),
+            () => new VelopackUpdater(updateOptions.FeedUrl, sp.GetRequiredService<UpdateProxyDownloader>()),
+            sp.GetRequiredService<UpdateProxyDownloader>()));
         collection.AddLogging(b => b.AddProvider(ApplicationLogging.Provider));
         collection.AddSingleton<IAtomicFileWriter, AtomicFileWriter>();
         collection.AddSingleton<ISettingsStore>(sp => new JsonSettingsStore(Path.Combine(AppPaths.UserDirectory, "settings.json"), sp.GetRequiredService<IAtomicFileWriter>()));

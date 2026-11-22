@@ -15,7 +15,8 @@ public interface IInstalledUpdater
     void Restart();
 }
 
-public sealed class UpdateService(UpdateOptions options, string currentVersion, HttpClient http, Func<IInstalledUpdater> createUpdater)
+public sealed class UpdateService(UpdateOptions options, string currentVersion, HttpClient http, Func<IInstalledUpdater> createUpdater,
+    IFileDownloader? downloader = null)
 {
     private IInstalledUpdater? updater;
     private bool downloaded;
@@ -46,7 +47,7 @@ public sealed class UpdateService(UpdateOptions options, string currentVersion, 
             canInstall = release?.CanInstall == true;
             return release;
         }
-        var json = await http.GetStringAsync(options.ManifestUrl);
+        var json = downloader is null ? await http.GetStringAsync(options.ManifestUrl) : await downloader.DownloadString(options.ManifestUrl);
         var manifest = JsonSerializer.Deserialize<Manifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (manifest is null || !SemanticVersion.TryParse(manifest.Version, out var latest) || latest.IsPrerelease)
             throw new InvalidDataException("The update manifest must contain a stable semantic version.");
@@ -72,9 +73,9 @@ public sealed class UpdateService(UpdateOptions options, string currentVersion, 
     private sealed record Manifest(string Version, string? ReleaseNotes);
 }
 
-public sealed class VelopackUpdater(string feedUrl) : IInstalledUpdater
+public sealed class VelopackUpdater(string feedUrl, IFileDownloader? downloader = null) : IInstalledUpdater
 {
-    private readonly UpdateManager manager = new(CreateSource(feedUrl));
+    private readonly UpdateManager manager = new(CreateSource(feedUrl, downloader));
     public static IUpdateSource CreateSource(string feedUrl, IFileDownloader? downloader = null)
     {
         var uri = new Uri(feedUrl, UriKind.Absolute);
