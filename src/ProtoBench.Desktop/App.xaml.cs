@@ -102,8 +102,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<NetworkRelayWorkspace>("network-relay", sp));
         collection.AddSingleton<IWorkspaceViewFactory, NetworkRelayViewFactory>();
         collection.AddSingleton(new ToolDescriptor("test-telnet-server", "Test Telnet Server", "Start an ASCII, ANSI/VT100 or simulated Telserv/TN6530 test server for terminal clients and relay testing.", ToolCategory.Utilities, NavigationIcons.TelnetServer));
-        collection.AddTransient(sp => new TestTelnetServerWorkspace(sp.GetRequiredService<PluginCatalog>().Plugins.SelectMany(p => p.TelnetServers)));
-        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TestTelnetServerWorkspace>("test-telnet-server", sp));
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new TestTelnetServerWorkspaceFactory(sp.GetRequiredService<PluginCatalog>()));
         collection.AddSingleton<IWorkspaceViewFactory, TestTelnetServerViewFactory>();
         collection.AddSingleton(new ToolDescriptor("timed-key-presser", "Timed Key Presser", "Press a selected keyboard key at a timed interval, with Start/Stop and a timestamped activity log.", ToolCategory.Utilities, NavigationIcons.TimedKeyPresser));
         collection.AddSingleton<IKeyboardInput, WindowsKeyboardInput>();

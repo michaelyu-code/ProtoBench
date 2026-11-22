@@ -15,13 +15,15 @@ public sealed class PluginTests : IDisposable
     private PluginPackageManager Packages => new(Path.Combine(directory, "installed"));
     public PluginTests() => Directory.CreateDirectory(directory);
 
-    private string MakePackage(string? extraPath = null, int api = PluginApi.Version, string id = "example.toolkit")
+    private string MakePackage(string? extraPath = null, int api = PluginApi.Version, string id = "example.toolkit", string version = "1.0.0", string? asset = null)
     {
         var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".nstplugin");
-        var manifest = new PluginManifest(1, api, id, "Example", "1.0.0", "ExamplePlugin.dll", "ExamplePlugin.ExamplePlugin", ["ExamplePlugin.dll"]);
+        var manifest = new PluginManifest(1, api, id, "Example", version, "ExamplePlugin.dll", "ExamplePlugin.ExamplePlugin",
+            asset is null ? ["ExamplePlugin.dll"] : ["ExamplePlugin.dll", asset]);
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
         using (var writer = new StreamWriter(archive.CreateEntry("plugin.json").Open())) writer.Write(JsonSerializer.Serialize(manifest));
         archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "ExamplePlugin.dll"), "ExamplePlugin.dll");
+        if (asset is not null) using (var writer = new StreamWriter(archive.CreateEntry(asset).Open())) writer.Write(version);
         if (extraPath is not null) using (var writer = new StreamWriter(archive.CreateEntry(extraPath).Open())) writer.Write("unexpected");
         return path;
     }
@@ -38,8 +40,16 @@ public sealed class PluginTests : IDisposable
             System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(plugin.Instance.GetType().Assembly));
         var serverProvider = Assert.Single(plugin.TelnetServers);
         Assert.Equal("example.byte-echo", serverProvider.Id);
-        using (var serverWorkspace = new ProtoBench.Desktop.Features.Networking.TestTelnetServerWorkspace(plugin.TelnetServers) { ListenPort = "0", SelectedProfileIndex = 3 })
+        var serverFactory = new ProtoBench.Desktop.Features.Networking.TestTelnetServerWorkspaceFactory(catalog);
+        Assert.Equal("test-telnet-server", serverFactory.ToolId);
+        using (var serverWorkspace = Assert.IsType<ProtoBench.Desktop.Features.Networking.TestTelnetServerWorkspace>(serverFactory.Create()))
         {
+            serverWorkspace.ListenPort = "0";
+            serverWorkspace.SelectedProfileIndex = 3;
+            using var secondServerWorkspace = Assert.IsType<ProtoBench.Desktop.Features.Networking.TestTelnetServerWorkspace>(serverFactory.Create());
+            Assert.NotSame(serverWorkspace, secondServerWorkspace);
+            Assert.Equal(0, secondServerWorkspace.SelectedProfileIndex);
+            Assert.Equal("Example byte echo", secondServerWorkspace.ServerProfiles[3]);
             Assert.Equal("Example byte echo", serverWorkspace.ServerProfiles[3]);
             Assert.False(serverWorkspace.ShowAnsiGreeting);
             Assert.Contains("raw bytes", serverWorkspace.ProfileDescription);
@@ -128,6 +138,89 @@ public sealed class PluginTests : IDisposable
         packages.SetEnabled("example.toolkit", true);
         using var enabled = PluginCatalog.Load(packages, [], [], []);
         Assert.Single(enabled.Plugins);
+    }
+
+    [Fact]
+    public async Task NewerImportKeepsRunningPluginAndAppliesCompleteReplacementOnReload()
+    {
+        var packages = Packages;
+        packages.Import(MakePackage(asset: "old.txt"));
+        using var running = PluginCatalog.Load(packages, [], [], []);
+        packages.Import(MakePackage(version: "1.1.0", asset: "new.txt"));
+        var installed = Assert.Single(packages.Installed());
+        Assert.Equal("1.0.0", installed.Manifest!.Version);
+        Assert.Equal("1.1.0", installed.PendingVersion);
+        Assert.True(File.Exists(Path.Combine(installed.Directory, "old.txt")));
+        using (var workspace = new PluginToolWorkspace(Assert.Single(running.Plugins[0].Tools)))
+        {
+            workspace.Inputs["text"] = "abc";
+            await workspace.ExecuteAsync();
+            Assert.StartsWith("BA7816BF", workspace.Output);
+        }
+        // A fresh catalog follows the same update path as the restarted app.
+        running.Dispose();
+        using var reloaded = PluginCatalog.Load(packages, [], [], []);
+        Assert.Empty(reloaded.Diagnostics);
+        Assert.Equal("1.1.0", Assert.Single(reloaded.Plugins).Manifest.Version);
+        Assert.False(File.Exists(Path.Combine(installed.Directory, "old.txt")));
+        Assert.Equal("1.1.0", File.ReadAllText(Path.Combine(installed.Directory, "new.txt")));
+        Assert.Null(Assert.Single(packages.Installed()).PendingVersion);
+    }
+
+    [Fact]
+    public void PendingUpdatesCanBeSupersededAndKeepLatestEnabledSetting()
+    {
+        var packages = Packages;
+        packages.Import(MakePackage());
+        packages.Import(MakePackage(version: "1.1.0", asset: "superseded.txt"));
+        packages.Import(MakePackage(version: "1.2.0", asset: "latest.txt"));
+        Assert.Throws<InvalidDataException>(() => packages.Import(MakePackage(version: "1.1.0")));
+        Assert.Throws<InvalidDataException>(() => packages.Import(MakePackage(version: "1.2.0.0")));
+        packages.SetEnabled("example.toolkit", false);
+        using (var disabled = PluginCatalog.Load(packages, [], [], []))
+        {
+            Assert.Empty(disabled.Diagnostics);
+            Assert.Empty(disabled.Plugins);
+        }
+        var installed = Assert.Single(packages.Installed());
+        Assert.Equal("1.2.0", installed.Manifest!.Version);
+        Assert.False(installed.Enabled);
+        Assert.False(File.Exists(Path.Combine(installed.Directory, "superseded.txt")));
+        Assert.True(File.Exists(Path.Combine(installed.Directory, "latest.txt")));
+        packages.SetEnabled("example.toolkit", true);
+        using var enabled = PluginCatalog.Load(packages, [], [], []);
+        Assert.Equal("1.2.0", Assert.Single(enabled.Plugins).Manifest.Version);
+    }
+
+    [Fact]
+    public void InvalidUpdatePreservesInstalledAndPreviouslyQueuedPackages()
+    {
+        var packages = Packages;
+        packages.Import(MakePackage());
+        packages.Import(MakePackage(version: "1.1.0"));
+        Assert.Throws<InvalidDataException>(() => packages.Import(MakePackage(extraPath: "../outside.dll", version: "1.2.0")));
+        var installed = Assert.Single(packages.Installed());
+        Assert.Equal("1.0.0", installed.Manifest!.Version);
+        Assert.Equal("1.1.0", installed.PendingVersion);
+        Assert.DoesNotContain(Directory.EnumerateDirectories(packages.Root), d => Path.GetFileName(d).StartsWith(".import-"));
+        using var reloaded = PluginCatalog.Load(packages, [], [], []);
+        Assert.Empty(reloaded.Diagnostics);
+        Assert.Equal("1.1.0", Assert.Single(reloaded.Plugins).Manifest.Version);
+    }
+
+    [Fact]
+    public void DamagedPendingUpdateReportsFailureAndStillLoadsInstalledPlugin()
+    {
+        var packages = Packages;
+        packages.Import(MakePackage());
+        packages.Import(MakePackage(version: "1.1.0"));
+        File.WriteAllText(Path.Combine(packages.Root, ".update-example.toolkit", "plugin.json"), "invalid json");
+        using var reloaded = PluginCatalog.Load(packages, [], [], []);
+        Assert.Contains(reloaded.Diagnostics, d => d.Contains("plugin update could not apply"));
+        Assert.Equal("1.0.0", Assert.Single(reloaded.Plugins).Manifest.Version);
+        Assert.True(Assert.Single(packages.Installed()).Enabled);
+        packages.Import(MakePackage(version: "1.1.0"));
+        Assert.Equal("1.1.0", Assert.Single(packages.Installed()).PendingVersion);
     }
 
     [Fact]

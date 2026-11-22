@@ -33,6 +33,9 @@
    <Expander x:Name="InputPanel" Header="Log input" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <StackPanel Spacing="10">
    <ComboBox x:Name="FormatPicker" Header="Format" HorizontalAlignment="Stretch" />
+   <controls:ActionRow>
+    <Button x:Name="ReparseFileButton" Content="Reparse file" IsEnabled="False" ToolTipService.ToolTip="Parse the current file again using the selected format" />
+   </controls:ActionRow>
    <TabView IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" TabWidthMode="SizeToContent" SelectedIndex="0">
     <TabViewItem Header="Paste text" IsClosable="False">
      <StackPanel Spacing="8" Padding="0,8,0,0">

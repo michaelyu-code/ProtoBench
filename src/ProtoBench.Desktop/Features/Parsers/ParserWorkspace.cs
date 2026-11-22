@@ -32,6 +32,8 @@ public sealed class ParserWorkspace : ToolWorkspace
     private LogPage? page;
     private LogStore? store;
     private Stream? stagedPaste;
+    private string? sourceFile;
+    public bool CanReparseFile => sourceFile is not null && !IsBusy && !disposed;
     private string stagedPasteInfo = "";
     public const int EditablePasteBytes = 4 * 1024 * 1024;
     private CancellationTokenSource? queryCancellation;
@@ -67,6 +69,7 @@ public sealed class ParserWorkspace : ToolWorkspace
         if (!IsBusy) ClearStagedPaste();
         return ParseInputAsync(file, null, null, file);
     }
+    public Task ReparseFileAsync() => CanReparseFile ? OpenAsync(sourceFile!) : Task.CompletedTask;
     public Task ParseTextAsync(string text)
     {
         if (stagedPaste is not { } input) return ParseInputAsync(null, text, null, "Pasted text (UTF-8)");
@@ -181,6 +184,8 @@ public sealed class ParserWorkspace : ToolWorkspace
         Page = null;
         Diagnostics = Candidates = "";
         Path = label;
+        sourceFile = file;
+        OnPropertyChanged(nameof(CanReparseFile));
         Query = new LogQuery();
         var selected = SelectedFormatId;
         var progress = new Progress<LogImportProgress>(value =>
@@ -249,6 +254,8 @@ public sealed class ParserWorkspace : ToolWorkspace
     {
         if (disposed) return;
         disposed = true;
+        sourceFile = null;
+        OnPropertyChanged(nameof(CanReparseFile));
         settings.Changed -= SettingsChanged;
         lifetime.Cancel(); CancelSearch();
         base.Dispose();

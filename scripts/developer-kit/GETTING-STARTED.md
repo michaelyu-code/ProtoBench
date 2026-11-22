@@ -44,7 +44,7 @@ If `app/` is included, launch `app/ProtoBench.exe`. Otherwise use a matching app
 
 Open **Settings → Plugins & custom tools → Import plugin…**, choose your `.nstplugin` package, and restart. Tools appear under **Custom Tools**; parsers and generators appear in their existing selectors. Open two tabs to check session independence. The custom UI counter starts at zero in each tab.
 
-Plugins execute developer code with the app's permissions. Imports and enable/disable changes take effect after restart. For a replacement, close the app, remove only your plugin's folder using **Open plugins folder**, and import the new package after reopening.
+Plugins execute developer code with the app's permissions. Imports and enable/disable changes take effect after restart. To update an installed plugin, increase its numeric version in `plugin.json`, build and import the new package with the same ID, then choose **Settings → Reload app**. The app stages the replacement while the current plugin keeps running and applies it at startup. The enabled setting is preserved; equal versions and downgrades are rejected.
 
 ## Kit contents
 

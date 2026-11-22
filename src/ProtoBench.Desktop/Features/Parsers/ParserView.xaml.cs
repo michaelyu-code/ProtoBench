@@ -329,12 +329,16 @@ public sealed partial class ParserView : UserControl
             {
                 var file = await dialogs.OpenAsync();
                 if (file is not null)
+                {
+                    PathInput.Text = file;
                     await vm.OpenAsync(file);
+                }
             }
             catch (Exception ex) { Status.Text = ex.Message; }
         };
         CancelButton.Click += (_, _) => vm.CancelWork();
         ParseTextButton.Click += async (_, _) => await vm.ParseTextAsync(PasteInput.Text);
+        ReparseFileButton.Click += async (_, _) => await vm.ReparseFileAsync();
         PasteInput.Paste += (_, args) =>
         {
             args.Handled = true;
@@ -447,6 +451,8 @@ public sealed partial class ParserView : UserControl
             Progress.IsActive = vm.IsBusy || vm.IsQuerying;
             OpenButton.IsEnabled = !vm.IsBusy;
             ParsePathButton.IsEnabled = !vm.IsBusy;
+            ReparseFileButton.IsEnabled = vm.CanReparseFile;
+            FormatPicker.IsEnabled = !vm.IsBusy;
             ParseTextButton.IsEnabled = !vm.IsBusy;
             ClearTextButton.IsEnabled = !vm.IsBusy;
             PasteInput.IsEnabled = !vm.IsBusy;
@@ -479,6 +485,7 @@ public sealed partial class ParserView : UserControl
         Unloaded += (_, _) => { searchDelay.Stop(); selectionCancellation?.Cancel(); tableView?.Cancel(); };
         Loaded += (_, _) =>
         {
+            ReparseFileButton.IsEnabled = vm.CanReparseFile;
             UpdateBrushes();
             autoFitEnabled = vm.AutoFitResults;
             ArrangePanes();

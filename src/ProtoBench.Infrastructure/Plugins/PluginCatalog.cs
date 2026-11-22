@@ -24,6 +24,7 @@ public sealed class PluginCatalog : IDisposable
         IEnumerable<string> parserIds, IEnumerable<string> generatorIds)
     {
         var catalog = new PluginCatalog();
+        catalog.diagnostics.AddRange(packages.ApplyPendingUpdates());
         var tools = new HashSet<string>(toolIds, StringComparer.OrdinalIgnoreCase);
         var parsers = new HashSet<string>(parserIds, StringComparer.OrdinalIgnoreCase);
         var generators = new HashSet<string>(generatorIds, StringComparer.OrdinalIgnoreCase);

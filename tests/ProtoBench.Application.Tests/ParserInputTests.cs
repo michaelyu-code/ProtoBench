@@ -144,6 +144,74 @@ public sealed class ParserInputTests
     }
 
     [Fact]
+    public async Task ReparseFileUsesNewSpecAndResetsPreviousResultsAndSearch()
+    {
+        var definition = ParserDefinition.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "definitions/parsers/synthetic-delimited.json")));
+        var alternate = definition with
+        {
+            Id = "alternate", Name = "Alternate spec", DetectionPrefix = "ALT|",
+            Fields = definition.Fields.Select(f => f.Name == "message" ? f with { Transform = "upper" } : f).ToList()
+        };
+        using var workspace = new ParserWorkspace(new ParserRegistry([new JsonDefinedParser(definition), new JsonDefinedParser(alternate)]),
+            new SessionSettings(new Store()), NullLogger<ParserWorkspace>.Instance);
+        var file = Path.GetTempFileName();
+        try
+        {
+            Assert.False(workspace.CanReparseFile);
+            await File.WriteAllTextAsync(file, "SYN|mixed case|1");
+            workspace.SelectedFormatId = definition.Id;
+            await workspace.OpenAsync(file);
+            Assert.True(workspace.CanReparseFile);
+            Assert.Equal("mixed case", (await workspace.GetRecordAsync(workspace.Page!.Rows[0].Id)).Fields[1].Value);
+            await workspace.LoadPageAsync(new(Search: "absent"));
+            Assert.Empty(workspace.Page!.Rows);
+            workspace.SelectedFormatId = alternate.Id;
+            await workspace.ReparseFileAsync();
+            Assert.Equal("Completed", workspace.Status);
+            Assert.Equal(file, workspace.Path);
+            Assert.Equal("MIXED CASE", (await workspace.GetRecordAsync(Assert.Single(workspace.Page!.Rows).Id)).Fields[1].Value);
+            Assert.Equal(new ProtoBench.Infrastructure.Logs.LogQuery(), workspace.Query);
+            workspace.SelectedFormatId = null;
+            await workspace.ReparseFileAsync();
+            Assert.Equal("mixed case", (await workspace.GetRecordAsync(Assert.Single(workspace.Page!.Rows).Id)).Fields[1].Value);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public async Task FailedFileParseCanBeRetriedAndTextInputClearsReparseTarget()
+    {
+        using var workspace = Workspace(new Store());
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, "SYN|retry|1");
+            workspace.SelectedFormatId = "wrong-spec";
+            await workspace.OpenAsync(file);
+            Assert.Null(workspace.Page);
+            Assert.True(workspace.CanReparseFile);
+            workspace.SelectedFormatId = workspace.Parsers[0].FormatId;
+            await workspace.ReparseFileAsync();
+            Assert.Equal("Completed", workspace.Status);
+            Assert.Equal("retry", (await workspace.GetRecordAsync(Assert.Single(workspace.Page!.Rows).Id)).Fields[1].Value);
+            await workspace.ParseTextAsync("SYN|pasted replacement|2");
+            Assert.False(workspace.CanReparseFile);
+            await workspace.ReparseFileAsync();
+            Assert.Equal("pasted replacement", (await workspace.GetRecordAsync(Assert.Single(workspace.Page!.Rows).Id)).Fields[1].Value);
+            await workspace.OpenAsync(file);
+            File.Delete(file);
+            await workspace.ReparseFileAsync();
+            Assert.Null(workspace.Page);
+            Assert.NotEqual("Completed", workspace.Status);
+            Assert.True(workspace.CanReparseFile);
+            workspace.Dispose();
+            Assert.False(workspace.CanReparseFile);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
     public async Task LargePasteIndexesAllRecordsAndPagesBy2000()
     {
         using var workspace = Workspace(new Store());

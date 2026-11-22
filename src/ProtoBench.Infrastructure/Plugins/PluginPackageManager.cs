@@ -21,7 +21,10 @@ public sealed class PluginPackageManager(string root)
                 var manifest = ReadManifestFile(Path.Combine(directory, "plugin.json"));
                 if (!Path.GetFileName(directory).Equals(manifest.Id, StringComparison.Ordinal))
                     throw new InvalidDataException("Plugin folder does not match its ID.");
-                result.Add(new(directory, manifest, !File.Exists(Path.Combine(directory, ".disabled")), null));
+                result.Add(new(directory, manifest, !File.Exists(Path.Combine(directory, ".disabled")), null)
+                {
+                    PendingVersion = ReadPendingVersion(manifest.Id)
+                });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
             { result.Add(new(directory, null, false, ex.Message)); }
@@ -50,7 +53,15 @@ public sealed class PluginPackageManager(string root)
         var manifest = Inspect(source);
         Directory.CreateDirectory(Root);
         var destination = Path.Combine(Root, manifest.Id);
-        if (Directory.Exists(destination)) throw new InvalidDataException("This plugin ID is already installed. Remove its folder after closing the app before installing a replacement.");
+        var replacing = Directory.Exists(destination);
+        if (replacing)
+        {
+            var current = ReadManifestFile(Path.Combine(destination, "plugin.json"));
+            if (current.Id != manifest.Id) throw new InvalidDataException("Plugin folder does not match its ID.");
+            var latestVersion = ReadPendingVersion(manifest.Id) ?? current.Version;
+            if (NumericVersion(manifest.Version) <= NumericVersion(latestVersion))
+                throw new InvalidDataException($"Version {latestVersion} is already installed or awaiting reload. Import a newer plugin version.");
+        }
         var staging = Path.Combine(Root, ".import-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(staging);
         try
@@ -96,10 +107,91 @@ public sealed class PluginPackageManager(string root)
             var stagedManifest = ReadManifestFile(Path.Combine(staging, "plugin.json"));
             if (stagedManifest != manifest && (System.Text.Json.JsonSerializer.Serialize(stagedManifest) != System.Text.Json.JsonSerializer.Serialize(manifest)))
                 throw new InvalidDataException("Manifest changed during import.");
-            Directory.Move(staging, destination);
+            // Loaded DLLs stay untouched until the next process starts.
+            CommitDirectory(staging, replacing ? PendingPath(manifest.Id) : destination);
             return manifest;
         }
         finally { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
+    }
+
+    /// <summary>Run at startup, before loading any plugin assemblies.</summary>
+    public IReadOnlyList<string> ApplyPendingUpdates()
+    {
+        Directory.CreateDirectory(Root);
+        var diagnostics = new List<string>();
+        foreach (var pending in Directory.EnumerateDirectories(Root, ".update-*"))
+        {
+            try
+            {
+                var manifest = ReadManifestFile(Path.Combine(pending, "plugin.json"));
+                if (pending != PendingPath(manifest.Id)) throw new InvalidDataException("Pending plugin folder does not match its ID.");
+                var destination = Path.Combine(Root, manifest.Id);
+                var current = ReadManifestFile(Path.Combine(destination, "plugin.json"));
+                if (current.Id != manifest.Id || NumericVersion(manifest.Version) <= NumericVersion(current.Version))
+                    throw new InvalidDataException("Pending plugin must be newer than the installed version.");
+                foreach (var file in manifest.Files)
+                {
+                    var path = PackagePath(pending, file);
+                    RejectLinks(path);
+                    if (!File.Exists(path)) throw new InvalidDataException($"Missing plugin file: {file}");
+                }
+                // Keep the user's current enable/disable choice, including changes after import.
+                var marker = Path.Combine(pending, ".disabled");
+                if (File.Exists(Path.Combine(destination, ".disabled"))) File.WriteAllText(marker, "Disabled; takes effect on next app start.");
+                else File.Delete(marker);
+                CommitDirectory(pending, destination);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
+            {
+                diagnostics.Add($"{Path.GetFileName(pending)}: plugin update could not apply. {ex.Message}");
+            }
+        }
+        return diagnostics;
+    }
+
+    private string PendingPath(string id) => Path.Combine(Root, ".update-" + id);
+
+    private string? ReadPendingVersion(string id)
+    {
+        try
+        {
+            var pending = PendingPath(id);
+            if (!Directory.Exists(pending)) return null;
+            var manifest = ReadManifestFile(Path.Combine(pending, "plugin.json"));
+            return manifest.Id == id ? manifest.Version : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
+        {
+            // A damaged pending update must not hide or disable the working installation.
+            // ApplyPendingUpdates reports the startup diagnostic separately.
+            return null;
+        }
+    }
+
+    private static Version NumericVersion(string value)
+    {
+        var version = Version.Parse(value);
+        return new Version(version.Major, version.Minor, Math.Max(0, version.Build), Math.Max(0, version.Revision));
+    }
+
+    private void CommitDirectory(string staging, string destination)
+    {
+        RejectLinks(destination);
+        var backup = Path.Combine(Root, ".backup-" + Guid.NewGuid().ToString("N"));
+        var replacing = Directory.Exists(destination);
+        if (replacing) Directory.Move(destination, backup);
+        try { Directory.Move(staging, destination); }
+        catch
+        {
+            if (replacing) Directory.Move(backup, destination);
+            throw;
+        }
+        // A DLL held by another process must not turn a successful commit into a failed import.
+        if (replacing)
+        {
+            try { Directory.Delete(backup, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     public void SetEnabled(string id, bool enabled)

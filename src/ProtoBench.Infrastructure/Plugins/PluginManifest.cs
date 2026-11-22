@@ -44,4 +44,7 @@ public sealed record PluginManifest(int SchemaVersion, int ApiVersion, string Id
     }
 }
 
-public sealed record InstalledPlugin(string Directory, PluginManifest? Manifest, bool Enabled, string? Error);
+public sealed record InstalledPlugin(string Directory, PluginManifest? Manifest, bool Enabled, string? Error)
+{
+    public string? PendingVersion { get; init; }
+}

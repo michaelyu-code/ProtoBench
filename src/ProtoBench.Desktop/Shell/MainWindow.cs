@@ -564,7 +564,8 @@ public sealed class MainWindow : Window
                     continue;
                 }
                 var active = pluginCatalog.Plugins.FirstOrDefault(p => p.Manifest.Id == manifest.Id);
-                var state = active is null ? "Not loaded this session" : $"Loaded · {active.Tools.Count} tools · {active.Parsers.Count} parsers · {active.Generators.Count} generators · {active.FieldDecoders.Count} decoders";
+                var state = active is null ? "Not loaded this session" : $"Loaded · {active.Tools.Count} tools · {active.Parsers.Count} parsers · {active.Generators.Count} generators · {active.FieldDecoders.Count} decoders · {active.TelnetServers.Count} Telnet profiles";
+                if (item.PendingVersion is { } pendingVersion) state += $" · Update to {pendingVersion} ready — reload app to apply";
                 var enabled = new CheckBox { Content = Ui.Text($"Enable {manifest.Name} ({manifest.Version})"), IsChecked = item.Enabled };
                 enabled.Click += (_, _) =>
                 {
@@ -582,15 +583,18 @@ public sealed class MainWindow : Window
                 var source = await files.OpenAsync();
                 if (source is null) return;
                 var manifest = pluginPackages.Inspect(source);
+                var existing = pluginPackages.Installed().FirstOrDefault(p => p.Manifest?.Id == manifest.Id);
+                var updating = existing is not null;
                 var dialog = new ContentDialog
                 {
-                    XamlRoot = root.XamlRoot, Title = $"Import {manifest.Name}?",
-                    Content = $"Version {manifest.Version} · SDK API {manifest.ApiVersion}\n\nPlugins run developer code with the app's permissions. Import only code you trust. It will be enabled at the next app start.",
-                    PrimaryButtonText = "Import plugin", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
+                    XamlRoot = root.XamlRoot, Title = $"{(updating ? "Update" : "Import")} {manifest.Name}?",
+                    Content = $"Version {manifest.Version} · SDK API {manifest.ApiVersion}\n\nPlugins run developer code with the app's permissions. Import only code you trust. " +
+                        (updating ? $"This replaces version {existing!.PendingVersion ?? existing.Manifest!.Version} after you reload the app. Your enabled setting is kept." : "It will be enabled at the next app start."),
+                    PrimaryButtonText = updating ? "Import update" : "Import plugin", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
                 };
                 if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
                 await Task.Run(() => pluginPackages.Import(source));
-                status.Text = "Plugin imported. Restart the app to load its tools and formats.";
+                status.Text = updating ? "Plugin update ready. Use Reload app to apply it." : "Plugin imported. Use Reload app to load its tools and formats.";
                 Refresh();
             }, Report),
             Ui.AsyncButton("Open plugins folder", async () =>
