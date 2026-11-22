@@ -358,13 +358,13 @@ public sealed class TcpRelayTests
     }
 
     [Fact]
-    public async Task AutoModeHandlesEmptyAndSilentClientsAndStopCancelsPeek()
+    public async Task AutoModeHandlesEmptyClientBeforeSetupTimeout()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)); var token = timeout.Token;
         using var certificate = RelayTestCertificate.Create("localhost");
         await using var relay = TcpRelay.Start(new(IPAddress.Loopback, 0, "localhost", 1)
         {
-            AutoDetectIncomingTls = true, ListenerCertificate = certificate, SetupTimeout = TimeSpan.FromMilliseconds(200)
+            AutoDetectIncomingTls = true, ListenerCertificate = certificate
         });
         using (var empty = new TcpClient())
         {
@@ -372,15 +372,45 @@ public sealed class TcpRelayTests
             var stream = empty.GetStream(); empty.Client.Shutdown(SocketShutdown.Send);
             Assert.Equal(0, await stream.ReadAsync(new byte[1], token));
         }
-        using (var silent = new TcpClient())
-        {
-            await silent.ConnectAsync(relay.LocalEndpoint, token);
-            Assert.Equal(0, await silent.GetStream().ReadAsync(new byte[1], token));
-        }
-        using var pending = new TcpClient(); await pending.ConnectAsync(relay.LocalEndpoint, token);
         relay.Stop(); await relay.Completion.WaitAsync(token);
         Assert.Equal(0, relay.ActiveConnections);
         Assert.Contains(relay.Capture.Snapshot().Entries, e => e.Description.Contains("closed before sending its first byte"));
+        Assert.DoesNotContain(relay.Capture.Snapshot().Entries, e => e.Description == "Relay ready.");
+    }
+
+    [Fact]
+    public async Task AutoModeTimesOutSilentClient()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)); var token = timeout.Token;
+        using var certificate = RelayTestCertificate.Create("localhost");
+        await using var relay = TcpRelay.Start(new(IPAddress.Loopback, 0, "localhost", 1)
+        {
+            AutoDetectIncomingTls = true, ListenerCertificate = certificate, SetupTimeout = TimeSpan.FromMilliseconds(200)
+        });
+        using var silent = new TcpClient();
+        await silent.ConnectAsync(relay.LocalEndpoint, token);
+        Assert.Equal(0, await silent.GetStream().ReadAsync(new byte[1], token));
+        relay.Stop(); await relay.Completion.WaitAsync(token);
+        Assert.Equal(0, relay.ActiveConnections);
+        Assert.Contains(relay.Capture.Snapshot().Entries, e => e.Description.Contains("CanceledException"));
+        Assert.DoesNotContain(relay.Capture.Snapshot().Entries, e => e.Description == "Relay ready.");
+    }
+
+    [Fact]
+    public async Task AutoModeStopCancelsPendingPeek()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)); var token = timeout.Token;
+        using var certificate = RelayTestCertificate.Create("localhost");
+        await using var relay = TcpRelay.Start(new(IPAddress.Loopback, 0, "localhost", 1)
+        {
+            AutoDetectIncomingTls = true, ListenerCertificate = certificate
+        });
+        using var pending = new TcpClient(); await pending.ConnectAsync(relay.LocalEndpoint, token);
+        // ConnectAsync can complete before the listener accepts. Wait for an actual active handler before stopping.
+        while (relay.ActiveConnections == 0) await Task.Delay(10, token);
+        relay.Stop(); await relay.Completion.WaitAsync(token);
+        Assert.Equal(0, relay.ActiveConnections);
+        Assert.DoesNotContain(relay.Capture.Snapshot().Entries, e => e.Description.StartsWith("Connection failed:"));
         Assert.DoesNotContain(relay.Capture.Snapshot().Entries, e => e.Description == "Relay ready.");
     }
 

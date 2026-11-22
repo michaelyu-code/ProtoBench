@@ -1,5 +1,11 @@
 # Verification record
 
+## Tagged workflow relay-test timing — 23 November 2026
+
+The v2.0.11 tagged run failed in `TcpRelayTests.AutoModeHandlesEmptyAndSilentClientsAndStopCancelsPeek`, before release packaging. Its shared 200 ms setup timeout expired while the CI runner was processing the empty client's half-close, producing `OperationCanceledException` instead of the EOF event asserted by the test. The same commit's main-branch build passed. All update/proxy application tests passed in the failed tagged run.
+
+Version 2.0.12 separates empty-client EOF, silent-client timeout, and stop-during-peek into three tests. Only the silent-client case uses the short timeout. The stop case waits for an accepted active handler before stopping, and verifies that cancellation closes it without a setup-failure event. Production relay and updater code are unchanged. The full Release suite passed 589 tests with the existing large-file test skipped. The three relay cases also passed ten consecutive targeted runs.
+
 ## Update proxy fallback — 23 November 2026
 
 Version 2.0.11 adds a saved Fallback proxy address textbox and Save proxy action under Updates. Blank disables the fallback; HTTP(S) host/port addresses are normalized and validated before persistence. Startup waits for settings to load before checking. Update requests use the normal OS connection first, then retry once through the configured proxy on connection/timeout failures, blocking HTTP statuses or server errors. The same downloader covers portable manifests and installed GitHub API/feed/package traffic. Package retries truncate partial output, and cancellation/local file errors do not trigger another route. HTTPS and Velopack package verification remain unchanged. Browser download-page navigation uses browser settings.
