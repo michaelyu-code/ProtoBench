@@ -26,6 +26,14 @@ For a specialized UI, build the programmatic WinUI counter:
 
 It produces `packages/example.winui-1.0.0.nstplugin`. Custom compiled XAML/PRI resource registration is not supplied by the host; use programmatic views as shown.
 
+For the shared spec-search and field-decoder views, build the portable structured-results example:
+
+```powershell
+./tools/Build-PluginPackage.ps1 -ProjectPath ./samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj
+```
+
+It produces `packages/example.structured-results-1.0.0.nstplugin` (also prebuilt). It demonstrates ranked-list/passage presentation, decoder component rows, provenance, numeric limits, and optional supporting-field editors using `PluginToolResult.Search` and `.Decoding`. No custom WinUI view is required. Its content and decoding rules are synthetic, and its search filters fixed example passages rather than running BM25. Use the matching 2.0.10+ host and SDK. See the structured-results section of `docs/PLUGINS.md` to connect a real engine.
+
 ## Compile against the SDK
 
 Standard tools, parsers, generators and field decoders import `sdk/ProtoBench.PluginSdk.props` in their project. It references all portable contract DLLs under `sdk/net10.0` with `Private=false`, so the host's SDK copies are not bundled into your plugin. Keep `<EnableDynamicLoading>true</EnableDynamicLoading>` in plugin projects.

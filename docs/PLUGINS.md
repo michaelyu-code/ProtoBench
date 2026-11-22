@@ -63,9 +63,68 @@ Optional schema-version 1 JSON definitions belong under `definitions/messages/`,
 
 ## Standard tools
 
-Export a `PluginTool` with an ID, name, description, ordered `ToolInput` list and a `CreateSession` factory. Inputs support Text, Multiline, Secret (masked) and Choice. Give Choice inputs a nonempty choices list containing their default value. A standard form supports at most 64 inputs, required checks, Run, Clear inputs, Cancel, text output, Copy result and optional hierarchical result fields. The host does not persist tool inputs or results.
+Export a `PluginTool` with an ID, name, description, ordered `ToolInput` list and a `CreateSession` factory. Inputs support Text, Multiline, Secret (masked), Choice, Integer and FieldValues. Give Choice inputs a nonempty choices list containing their default value. A standard form supports at most 64 inputs, required checks, Run, Clear inputs, Cancel, text output, Copy result and optional hierarchical result fields. The host does not persist tool inputs or results. Input edits invalidate the displayed result; Run, Clear and inputs are disabled during execution, while Cancel remains available.
 
 Each factory call must return a **new** `IPluginToolSession`. Its `ExecuteAsync` receives a read-only snapshot of input strings and a cancellation token, and returns `PluginToolResult(Text, Fields?)`. Execution is off the UI thread; never access WinUI controls from this method. Honor cancellation and enforce resource limits appropriate to the operation. The host disables Run during execution. Closing a tab cancels its operation and disposes the session after that operation ends; a non-cooperative session can delay its own disposal. Treat masked input as ordinary managed strings, not guaranteed-erased secret storage.
+
+### Structured spec search and field decoding (2.0.10+)
+
+Portable plugins can opt into the shared result views without implementing WinUI. Build against the 2.0.10+ SDK and use a matching updated host. These additions keep API version 2 and assembly identity `2.0.0.0`; existing result constructors, deconstruction, and text/tree rendering continue to work. Rebuild plugins that use the new members. An older host cannot render these new contracts.
+
+Set **one** of `PluginToolResult.Search` or `.Decoding` using an object initializer. `Text` is still raw/copyable output; for structured results it appears in a collapsed **Raw output** expander. `Fields` is used by the legacy text/tree view only. An empty `Text` is allowed for structured results, including a search with no hits. A custom `ICustomToolViewProvider` still takes precedence over the standard host views.
+
+For search:
+
+```csharp
+return new PluginToolResult(rawOutput)
+{
+    Search = new ToolSearchResult(query, rankedHits)
+    {
+        HighlightTerms = searchTerms,
+        TotalMatches = totalMatches // omit if the engine does not know the full count
+    }
+};
+
+// Construct each hit from the real engine's result and source metadata:
+var hit = new ToolSearchHit(sectionTitle, shortExcerpt, fullPassage)
+{
+    Reference = new ToolSpecReference(specNameAndVersion, sectionOrPage),
+    Score = bm25Score // optional; displayed under Ranking details, never as confidence
+};
+```
+
+Supply hits in relevance order: the host does not run BM25, rerank, paginate, or infer source metadata. It shows a selectable results list with excerpts and a passage preview, selects the first hit, emphasizes literal `HighlightTerms`, and provides **Copy passage**. List and preview reflow vertically in a narrow result pane. Zero hits show `EmptyMessage`. Scores and raw output stay collapsed. All titles, passages and references are plain text, not XAML or HTML.
+
+For field decoding:
+
+```csharp
+return new PluginToolResult(rawOutput)
+{
+    Decoding = new ToolDecodeResult("DE39 · Response code", value, summary,
+        [new ToolDecodeComponent("Transaction outcome", value, meaning)
+         { Position = "Entire field" }])
+    {
+        Status = ToolDecodeStatus.Decoded,
+        ContextUsed = [new("Specification", specVersion), new("Message type", mti)],
+        References = [new(specVersion, sectionOrPage, supportingPassage)]
+    }
+};
+```
+
+The host shows field name, raw value, summary, labeled component/value/meaning rows, context used, specification expanders, and **Copy decoded result**. Components can supply `Children` for expandable bit/byte/subfield breakdowns and their own `Reference`. Populate `Warnings` and choose `PartiallyDecoded`, `Unmapped`, `InvalidInput`, or `MissingContext` as appropriate; do not substitute a guessed meaning for unknown raw values. `ContextUsed` must list only values actually used by your rules. The plugin remains responsible for decoding, validation, and provenance.
+
+Use the optional input additions to improve the form:
+
+```csharp
+new ToolInput("max", "Max results", ToolInputKind.Integer, "10", Required: true)
+    { Minimum = 1, Maximum = 100 };
+new ToolInput("other", "Other fields", ToolInputKind.FieldValues, "{}")
+    { IsAdvanced = true };
+```
+
+`Integer` renders a numeric editor and validates whole numbers and optional inclusive bounds before calling the session. Inputs marked `IsAdvanced` appear in a collapsed **Optional inputs** group. `FieldValues` renders editable field/value rows with add/remove actions. The session receives a JSON object of strings; call `ToolInputValues.ParseFieldValues(inputs["other"])` to read it. Empty input means no fields. Blank and duplicate field names (ignoring case and surrounding whitespace), non-string JSON values, and malformed objects are rejected; value whitespace and leading zeroes are preserved. A required FieldValues input must contain at least one field. Clear inputs restores the declared defaults.
+
+`samples/plugins/StructuredResultsPlugin` demonstrates both views with synthetic content. The developer kit includes its standalone project, importable package, and the new contract source. The sample search filters a fixed dataset rather than implementing BM25; its decoder only defines a small synthetic DE39 mapping. Adapt the existing real search/decoder engine to return these contracts.
 
 ## Calculator plugins and shared utilities
 

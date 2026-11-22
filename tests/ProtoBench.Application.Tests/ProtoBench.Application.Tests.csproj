@@ -2,6 +2,7 @@
     <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
     <ItemGroup><ProjectReference Include="../../src/ProtoBench.Application/ProtoBench.Application.csproj" /><ProjectReference Include="../../src/ProtoBench.Infrastructure/ProtoBench.Infrastructure.csproj" />
     <ProjectReference Include="../../samples/plugins/ExamplePlugin/ExamplePlugin.csproj" />
+    <ProjectReference Include="../../samples/plugins/StructuredResultsPlugin/StructuredResultsPlugin.csproj" />
     <ProjectReference Include="../../src/ProtoBench.Parsing/ProtoBench.Parsing.csproj" />
     <ProjectReference Include="../../src/ProtoBench.Utilities/ProtoBench.Utilities.csproj" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Certificates/CertificateWorkspace.cs" Link="Desktop/CertificateWorkspace.cs" />

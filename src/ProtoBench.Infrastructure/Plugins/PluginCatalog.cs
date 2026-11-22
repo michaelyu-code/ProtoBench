@@ -102,10 +102,25 @@ public sealed class PluginCatalog : IDisposable
             throw new InvalidDataException("Invalid tool definition.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var input in tool.Inputs)
+        {
             if (string.IsNullOrWhiteSpace(input.Id) || !ids.Add(input.Id) || string.IsNullOrWhiteSpace(input.Label) ||
                 !Enum.IsDefined(input.Kind) || input.DefaultValue is null || input.Description is null ||
                 (input.Kind == ToolInputKind.Choice && (input.Choices is not { Count: > 0 } || !input.Choices.Contains(input.DefaultValue))))
                 throw new InvalidDataException("Invalid custom tool input.");
+            if (input.Minimum > input.Maximum ||
+                (input.Kind != ToolInputKind.Integer && (input.Minimum is not null || input.Maximum is not null)))
+                throw new InvalidDataException("Invalid custom tool numeric range.");
+            if (input.Kind == ToolInputKind.Integer && input.DefaultValue.Length > 0 &&
+                (!int.TryParse(input.DefaultValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ||
+                 (input.Minimum is { } min && number < min) || (input.Maximum is { } max && number > max)))
+                throw new InvalidDataException("Invalid custom tool numeric default.");
+            if (input.Kind == ToolInputKind.FieldValues)
+            {
+                try { ToolInputValues.ParseFieldValues(input.DefaultValue); }
+                catch (Exception ex) when (ex is ArgumentException or System.Text.Json.JsonException)
+                { throw new InvalidDataException("Invalid supporting-field default.", ex); }
+            }
+        }
     }
 
     public void Dispose()

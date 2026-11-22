@@ -127,12 +127,15 @@ try {
 
     $standard = Join-Path $staging 'samples/ExamplePlugin'
     $native = Join-Path $staging 'samples/ExampleWinUIPlugin'
-    $null = New-Item -ItemType Directory -Path $standard, $native -Force
+    $structured = Join-Path $staging 'samples/StructuredResultsPlugin'
+    $null = New-Item -ItemType Directory -Path $standard, $native, $structured -Force
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/ExamplePlugin.cs') -Destination $standard
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/plugin.json') -Destination $standard
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/definitions') -Destination $standard -Recurse
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/WinUIExamplePlugin/Plugin.cs') -Destination $native
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/WinUIExamplePlugin/plugin.json') -Destination $native
+    Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/StructuredResultsPlugin/Plugin.cs') -Destination $structured
+    Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/StructuredResultsPlugin/plugin.json') -Destination $structured
     $standardProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>__FRAMEWORK__</TargetFramework><EnableDynamicLoading>true</EnableDynamicLoading></PropertyGroup>
@@ -144,6 +147,7 @@ try {
 </Project>
 '@
     Write-Utf8 'samples/ExamplePlugin/ExamplePlugin.csproj' ($standardProject.Replace('__FRAMEWORK__', $framework))
+    Write-Utf8 'samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj' ($standardProject.Replace('__FRAMEWORK__', $framework))
     $nativeProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -166,7 +170,7 @@ try {
 
     # Include the contract source as a browsable API reference, without requiring the app source to build.
     foreach ($source in @(
-        'PluginSdk/PluginContracts.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
+        'PluginSdk/PluginContracts.cs', 'PluginSdk/StructuredToolResults.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
         'Parsing/Abstractions/ILogParser.cs', 'Parsing/Abstractions/IStreamingLogParser.cs', 'Parsing/Abstractions/IFieldDecoder.cs',
         'Generation/Abstractions/IFileGenerator.cs', 'Core/Fields/ParsedField.cs',
         'Core/Documents/ParseResult.cs', 'Core/Diagnostics/ParseDiagnostic.cs', 'Core/Networking/TelnetServerProvider.cs'
@@ -179,7 +183,7 @@ try {
     Write-Host 'Verifying standalone starters and creating example plugin packages…'
     # Run in a child PowerShell so a packaging failure cannot be hidden by an unrelated successful command.
     $powershellExecutable = (Get-Process -Id $PID).Path
-    foreach ($project in @('samples/ExamplePlugin/ExamplePlugin.csproj', 'samples/ExampleWinUIPlugin/ExampleWinUIPlugin.csproj')) {
+    foreach ($project in @('samples/ExamplePlugin/ExamplePlugin.csproj', 'samples/ExampleWinUIPlugin/ExampleWinUIPlugin.csproj', 'samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj')) {
         & $powershellExecutable -NoProfile -File (Join-Path $staging 'tools/Build-PluginPackage.ps1') -ProjectPath (Join-Path $staging $project) -Configuration $Configuration | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Standalone starter failed: $project" }
     }
@@ -193,7 +197,7 @@ try {
             (Get-FileHash -LiteralPath (Join-Path $staging 'app/ProtoBench.PluginSdk.WinUI.dll')).Hash) { throw 'WinUI SDK/app binary mismatch.' }
     }
     # Verification builds are disposable. Keep source starters, ready-to-import packages and all published app files.
-    foreach ($sample in @($standard, $native)) {
+    foreach ($sample in @($standard, $native, $structured)) {
         foreach ($name in @('bin', 'obj')) {
             $buildPath = [IO.Path]::GetFullPath((Join-Path $sample $name))
             if ([IO.Path]::GetDirectoryName($buildPath) -ne [IO.Path]::GetFullPath($sample)) { throw 'Unexpected sample build path.' }

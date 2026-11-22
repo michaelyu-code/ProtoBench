@@ -20,4 +20,7 @@
     <Project Path="tests/ProtoBench.Parsing.Tests/ProtoBench.Parsing.Tests.csproj" />
     <Project Path="tests/ProtoBench.Utilities.Tests/ProtoBench.Utilities.Tests.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/plugins/StructuredResultsPlugin/StructuredResultsPlugin.csproj" />
+  </Folder>
 </Solution>

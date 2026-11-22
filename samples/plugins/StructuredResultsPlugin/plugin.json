@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 2,
+  "id": "example.structured-results",
+  "name": "Structured spec tool examples",
+  "version": "1.0.0",
+  "entryAssembly": "StructuredResultsPlugin.dll",
+  "entryType": "StructuredResultsPlugin.Plugin",
+  "files": ["StructuredResultsPlugin.dll", "StructuredResultsPlugin.deps.json"]
+}

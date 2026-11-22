@@ -1,5 +1,13 @@
 # Verification record
 
+## SDK structured tool results — 23 November 2026
+
+Version 2.0.10 adds optional search and field-decoder result contracts to API 2, with shared WinUI host rendering. Search presents ordered hits, excerpts, a selected passage, literal term emphasis, source labels and collapsed ranking/raw details. Decoding presents status, raw value, summary, labeled component/value/meaning rows, expandable children, warnings, context, references and copy actions. Integer and supporting-field inputs, optional input groups, and input-edit invalidation are available to standard portable plugins. Existing text/tree tools and custom WinUI providers remain supported.
+
+Release solution and native UI builds passed with zero warnings/errors. The full suite passed 556 tests with the existing opt-in 2-GiB test skipped. Fifteen new cases cover structured results with empty raw output, clear/edit/disposal invalidation, mixed-presentation rejection, numeric bounds and fractional input, invalid/duplicate supporting fields, exact value preservation, cancellation, and loading/executing the standalone structured-results plugin against shared host contracts.
+
+The complete developer kit (matching app and SDK) was built at `artifacts/developer-kit-2.0.10.zip`. All three standalone sample projects compiled and packaged successfully; SDK/app DLL hashes matched. The kit includes the new contract source, guide and synthetic search/decoder sample. The sample does not implement BM25 or real specification mappings. An isolated native visual-test harness failed to expose a targetable window, so live appearance, narrow-window behavior, keyboard selection and clipboard actions have not been visually verified. No installed plugins or user settings were changed. The HTML design previews remain local and are not release source.
+
 ## Manual sidebar expansion — 22 November 2026
 
 The title-bar menu toggle now overrides responsive Auto mode for the current session. Opening it docks the pane; selecting a category/tool and resizing no longer dismiss it. Explicit collapse uses the compact rail or hides the pane at narrow widths. Menu-container replacement is queued after pane transitions instead of mutating NavigationView during its property callback.
