@@ -4,5 +4,6 @@
     <ProjectReference Include="../../../src/ProtoBench.PluginSdk/ProtoBench.PluginSdk.csproj" />
     <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="definitions/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="definitions/**/*.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

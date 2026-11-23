@@ -10,6 +10,7 @@
     <Compile Include="../../src/ProtoBench.Desktop/Features/Networking/TestTelnetServerWorkspace.cs" Link="Desktop/TestTelnetServerWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Networking/TestTelnetServerWorkspaceFactory.cs" Link="Desktop/TestTelnetServerWorkspaceFactory.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Converters/ConverterWorkspace.cs" Link="Desktop/ConverterWorkspace.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Payments/Iso8583Workspace.cs" Link="Desktop/Iso8583Workspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCleanupWorkspace.cs" Link="Desktop/TextCleanupWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Calculators/CalculatorWorkspace.cs" Link="Desktop/CalculatorWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserWorkspace.cs" Link="Desktop/ParserWorkspace.cs" />

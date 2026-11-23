@@ -235,6 +235,47 @@ public FrameworkElement? CreateView(string toolId, IPluginToolSession session)
 
 The host calls `CreateView` on the UI thread with the tab's newly created session; return null to use the standard form. The host still owns session disposal. The custom view owns its UI, input validation, execution/cancellation, error presentation and cleanup subscriptions. Make session disposal cancel any work the custom UI starts. Programmatic WinUI views are supported; automatic registration of a plugin's compiled XAML/PRI resources is not supplied. Use the exact compatible WinUI SDK and avoid packaging duplicate runtime/contract assemblies.
 
+## Raw ISO 8583 messages and jPOS XML
+
+**Parsers → ISO 8583 Parser** accepts one pasted raw message in ASCII text or whitespace-separated hex. Select a packager and Parse. Results include field number, the XML `name` description, decoded value, raw hex (including variable-length prefixes), and zero-based byte offset. Incomplete messages retain earlier fields and the available portion of the current field, with explicit warnings. Missing definitions, unsupported codecs, invalid lengths and trailing bytes also produce warnings; unparsed bytes remain visible. ASCII mode preserves whitespace exactly. Exclude transport framing, or use the XML root's `headerLength` for a fixed header.
+
+Ship unmodified GenericPackager XML files under `definitions/iso8583/<unique-profile-id>.xml` and list every XML file in `plugin.json` → `files`. Add `<None Update="definitions/**/*.xml" CopyToOutputDirectory="PreserveNewest" />` to the plugin project. Enabled, successfully loaded packages contribute profiles at startup; no new SDK export or Java dependency is required. The filename without extension is the profile ID/name and must be unique across user and plugin profiles. Duplicate IDs are skipped with a startup diagnostic. Users can also put XML in `%LOCALAPPDATA%/ProtoBench/definitions/iso8583/` and reload, or use **Load jPOS XML…** for the current tab. No protocol profile is bundled into the app by default.
+
+The example plugin includes the synthetic `example-ascii` profile. Parse `020060000000000000000512345000000` to inspect MTI, bitmap, synthetic account `12345`, and processing code `000000`. Remove the last three digits to demonstrate partial output. The same XML can be loaded directly from `samples/plugins/ExamplePlugin/definitions/iso8583/example-ascii.xml` without installing the plugin.
+
+This is a basic declarative reader, not a Java/jPOS runtime. Supported field classes use the exact `org.jpos.iso.` prefix:
+
+| Classes | Representation |
+| --- | --- |
+| `IFA_NUMERIC`, `IFA_AMOUNT`, `IF_CHAR` | Fixed ASCII text |
+| `IFA_LLNUM`, `IFA_LLLNUM` | ASCII length prefix and numeric text |
+| `IFA_LCHAR`, `IFA_LLCHAR`, `IFA_LLLCHAR`, `IFA_LLLLCHAR` | 1–4 ASCII prefix digits and text |
+| `IFB_NUMERIC`, `IFB_LLNUM`, `IFB_LLLNUM` | Packed BCD values; variable lengths use BCD prefixes; odd digits honor `pad` |
+| `IFB_FNUMERIC`, `IFB_FLLNUM`, `IFB_FLLLNUM` | Packed BCD with right F padding, or leading zero nibble when `pad=true` |
+| `IFB_HEX` | Packed hex characters with odd-length padding; D remains D (numeric BCD displays D as `=` for track 2) |
+| `IFB_AMOUNT` | Literal sign byte followed by BCD digits; XML length includes the sign |
+| `IFB_LLCHAR`, `IFB_LLLCHAR`, `IFB_LLLLCHAR` | BCD length prefix and ASCII text |
+| `IFA_BINARY` | Fixed ASCII hex; XML length counts decoded bytes |
+| `IFB_BINARY` | Fixed literal bytes |
+| `IFA_LBINARY`, `IFA_LLBINARY`, `IFA_LLLBINARY`, `IFA_LLLLBINARY` | 1–4 ASCII prefix digits and literal bytes |
+| `IFB_LLBINARY`, `IFB_LLLBINARY`, `IFB_LLLLBINARY` | BCD length prefix and literal bytes |
+| `IFE_CHAR`, `IFE_NUMERIC`, `IFE_AMOUNT` | Fixed EBCDIC text, including sign for amount |
+| `IFE_LCHAR`, `IFE_LLCHAR`, `IFE_LLLCHAR`, `IFE_LLLLCHAR`, `IFE_LLNUM`, `IFE_LLLNUM` | EBCDIC prefix and EBCDIC text |
+| `IFE_BINARY` | Fixed EBCDIC hex; XML length counts decoded bytes |
+| `IFE_LBINARY`, `IFE_LLBINARY`, `IFE_LLLBINARY`, `IFE_LLLLBINARY` | EBCDIC prefix and literal binary bytes |
+| `IFAE_LLCHAR`, `IFEA_LLCHAR` | ASCII prefix + EBCDIC text / EBCDIC prefix + ASCII text |
+| `IFA_BITMAP`, `IFB_BITMAP`, `IFE_BITMAP` | ASCII hex / literal / EBCDIC hex bitmap; XML length 8, 16 or 24 |
+
+For CP500 hex messages, select **Hex bytes** and **CP500 (EBCDIC International)**. The XML `class` determines each field's representation; the code-page setting applies only to EBCDIC text, prefixes and encoded-hex fields/bitmaps. It does not reinterpret ASCII classes or translate literal binary bytes. **IBM1047 (jPOS default)** preserves jPOS's normal EBCDIC behavior; CP500 must be selected explicitly because punctuation differs. Source hex, padding and prefix bytes remain available unchanged. The synthetic `example-ebcdic.xml` sample can be loaded directly or supplied by the example plugin. A CP500 sample with account `12345` and processing code `000000` is `F0F2F0F0F6F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F5F1F2F3F4F5F0F0F0F0F0F0`.
+
+Field 0 is the MTI and field 1 the bitmap. XML bitmap length 8 permits primary only, 16 permits primary/secondary (DE65 remains data), and 24 permits a tertiary bitmap (bit 65 becomes the continuation indicator). Set `maxValidField="192"` for fields beyond 128. Root attributes `headerLength`, `maxValidField`, `emitBitmap="true"`, `bitmapField="1"` and `firstField="2"` are accepted. Field `pad` and `trim` attributes are accepted. Unpacking preserves leading numeric zeros and character padding, as jPOS's string unpackers do; `pad` controls the side of an odd BCD padding nibble. A truncated fixed field remains labelled incomplete even with `trim=true`.
+
+Composite/subfield packagers, custom Java classes, other unlisted classes/attributes, and nonstandard bitmap/root layouts remain unsupported. Unsupported field definitions stop decoding when encountered, preserving earlier results. Unsupported root settings reject the profile rather than assume offsets. XML DTD declarations are tolerated but ignored; external resources/entities are never resolved. XML and raw messages are each limited to 1 MiB. Values remain protocol strings/hex; no currency scaling, code lookup or full jPOS validation is inferred. The examples and encoding/prefix strategies in the [jPOS field-packager tutorial](https://jpos.org/docs/tutorial/iso-packager/field-packagers/) are supported; this does not imply execution of arbitrary Java packagers or compatibility with every jPOS XML layout.
+
+The reader's codec choices follow the public [jPOS field packager implementations](https://github.com/jpos/jPOS/tree/main/jpos/src/main/java/org/jpos/iso); in particular variable binary classes carry literal bytes, unlike fixed `IFA_BINARY`, which carries ASCII hex. Plugin developers can call `Iso8583Profile.FromXml(xml, id)` and `Iso8583Parser.Parse(profile, bytes)` from `ProtoBench.Parsing`. The existing two-argument overload defaults to IBM1047; use `Iso8583Parser.Parse(profile, bytes, Iso8583EbcdicEncoding.Cp500)` for CP500. The developer kit includes these additive APIs and the explicit codec mappings. Rebuild against the updated kit to use them.
+
+The results view presents a tree with the decoded value beside each field description, without a duplicate value row. Each field has a selectable **Source value** child and a **Wire details** branch containing the length prefix, full source field, raw hex and byte range. Source value is the exact value portion of the pasted input, excluding its length prefix: an ASCII MTI `0200` shows source `0200`; an LL field `0512345` shows value source `12345`, prefix `05`, and full field source `0512345`. In hex input mode the source retains the original hex case and whitespace between its first and last digit. **Expand all** opens every branch; **Collapse all** leaves field descriptions and decoded values visible; **Expand level 1** opens fields while closing their wire details. New results start at level 1. Value byte ranges are zero-based with an exclusive end; incomplete fields expose only their available source bytes. **Full result as text** and **Copy result** retain all details for working backwards through a message.
+
 ## Full parsers and generators
 
 Set each `ParsedRecord.RawText` to the original record text, including its internal blank lines, indentation and line terminators. The host retains this string unchanged in the disk index. The Original tab displays it with single-spaced paragraphs; **Copy original** and copying a selection preserve the line endings supplied by the extension (including mixed CRLF/LF/CR). Literal `\n` text is not unescaped. If an extension trims, joins or normalizes lines before returning `RawText`, the host cannot recover the discarded formatting. Keep `SourceRange.CharacterOffset` and `CharacterLength` relative to that unchanged string; the host maps them to the displayed paragraphs for source highlighting.

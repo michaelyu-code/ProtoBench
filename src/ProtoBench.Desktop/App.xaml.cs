@@ -60,6 +60,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         Directory.CreateDirectory(Path.Combine(user, "parsers"));
         Directory.CreateDirectory(Path.Combine(user, "generators"));
         Directory.CreateDirectory(Path.Combine(user, "messages"));
+        Directory.CreateDirectory(Path.Combine(user, "iso8583"));
         // Parser specs come from extensions or explicit user definitions, never app defaults.
         var parsers = DefinitionLoader.Load(new[] { Path.Combine(user, "parsers") }, ParserDefinition.FromJson, d => d.Id);
         var generators = DefinitionLoader.Load(new[] { Path.Combine(bundled, "generators"), Path.Combine(user, "generators") }, GeneratorDefinition.FromJson, d => d.Id);
@@ -98,6 +99,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddSingleton(new ToolDescriptor("file-generator", "File Generator", "Validate, preview and save fixed-width records.", ToolCategory.Generators, NavigationIcons.FileGenerator));
         collection.AddSingleton(new ToolDescriptor("emv-decoder", "EMV Tag Decoder", "13 EMV tags, scheme profiles, Form Factor / Third Party Data, CVM, TTQ, CTQ and BER-TLV.", ToolCategory.Payments, NavigationIcons.EmvDecoder));
         collection.AddSingleton(new ToolDescriptor("iso8583-bitmap", "ISO 8583 Bitmap", "Decode hex/binary bitmaps and encode primary/secondary field lists.", ToolCategory.Payments, NavigationIcons.IsoBitmap));
+        collection.AddSingleton(new ToolDescriptor("iso8583-parser", "ISO 8583 Parser", "Parse raw ISO messages using jPOS XML, retaining partial fields and raw bytes.", ToolCategory.Parsers, NavigationIcons.IsoBitmap));
         collection.AddSingleton(new ToolDescriptor("luhn", "Luhn Check Digit", "Validate payment card checksums and calculate a Luhn check digit.", ToolCategory.Payments, NavigationIcons.Luhn));
         collection.AddSingleton(new ToolDescriptor("arqc", "ARQC Calculator", "Calculate and verify session-key application cryptograms with ISO 9797-1 algorithm 3.", ToolCategory.Payments, NavigationIcons.Arqc));
         collection.AddSingleton<IToolRegistry, ToolRegistry>();
@@ -127,6 +129,12 @@ public partial class App : Microsoft.UI.Xaml.Application
         // Factory registration gives DI ownership of plugin disposal after workspace shutdown.
         collection.AddSingleton(_ => plugins);
         var pluginDiagnostics = new List<string>(plugins.Diagnostics);
+        var isoProfiles = Iso8583Profiles.Load(new[] { Path.Combine(user, "iso8583") }
+            .Concat(plugins.Plugins.Select(p => Path.Combine(p.Directory, "definitions", "iso8583"))));
+        collection.AddSingleton(isoProfiles);
+        pluginDiagnostics.AddRange(isoProfiles.Diagnostics);
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<Iso8583Workspace>("iso8583-parser", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, Iso8583ViewFactory>();
         var extraParsers = DefinitionLoader.Load(plugins.Plugins.Select(p => Path.Combine(p.Directory, "definitions", "parsers")), ParserDefinition.FromJson, d => d.Id);
         var extraMessages = DefinitionLoader.Load(plugins.Plugins.Select(p => Path.Combine(p.Directory, "definitions", "messages")), MessageProfile.FromJson, d => d.Id);
         var extraGenerators = DefinitionLoader.Load(plugins.Plugins.Select(p => Path.Combine(p.Directory, "definitions", "generators")), GeneratorDefinition.FromJson, d => d.Id);

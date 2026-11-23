@@ -64,6 +64,14 @@
    <DataTemplate x:Key="ParsedFieldNodeTemplate">
     <TreeViewItem Content="{Binding Content}" HorizontalContentAlignment="Stretch" />
    </DataTemplate>
+   <DataTemplate x:Key="Iso8583NodeTemplate">
+    <TreeViewItem HorizontalContentAlignment="Stretch">
+     <TextBlock IsTextSelectionEnabled="True" TextWrapping="Wrap">
+      <Run Text="{Binding Content.Label}" />
+      <Run Text="{Binding Content.Value}" FontFamily="Consolas" />
+     </TextBlock>
+    </TreeViewItem>
+   </DataTemplate>
   </ResourceDictionary>
  </Application.Resources>
 </Application>

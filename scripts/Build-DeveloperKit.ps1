@@ -143,6 +143,7 @@ try {
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="definitions/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="definitions/**/*.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
 '@
@@ -172,6 +173,8 @@ try {
     foreach ($source in @(
         'PluginSdk/PluginContracts.cs', 'PluginSdk/StructuredToolResults.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
         'Parsing/Abstractions/ILogParser.cs', 'Parsing/Abstractions/IStreamingLogParser.cs', 'Parsing/Abstractions/IFieldDecoder.cs',
+        'Parsing/Definitions/Iso8583Profile.cs', 'Parsing/Engines/Iso8583Parser.cs',
+        'Parsing/Engines/Iso8583Codecs.cs', 'Parsing/Engines/Iso8583Ebcdic.cs',
         'Generation/Abstractions/IFileGenerator.cs', 'Core/Fields/ParsedField.cs',
         'Core/Documents/ParseResult.cs', 'Core/Diagnostics/ParseDiagnostic.cs', 'Core/Networking/TelnetServerProvider.cs'
     )) {

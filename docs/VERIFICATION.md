@@ -1,5 +1,47 @@
 # Verification record
 
+## Version 2.0.15 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.15 while retaining SDK assembly identity 2.0.0.0. Includes the raw ISO 8583 parser and results tree, jPOS XML/user-folder/plugin profiles, IBM1047/CP500 compatibility, Message Compare request/reply pairs and expanding inputs, and Text Compare line numbers and wrapping.
+
+The full Release regression suite passed 738 tests: Utilities 329, Parsing 127, Application 271 and Generation 11. The existing opt-in large-file test was skipped. The versioned Release desktop build passed with zero warnings/errors in `artifacts/releasecheck`; its DLL reports file version 2.0.15.0. An earlier output directory containing dotted version segments caused a PRI qualifier warning; the neutral directory avoided it without a source change. The SDK-only developer-kit verification passed, building and packaging all three standalone sample plugins. The example package includes both ASCII and EBCDIC ISO XML definitions. `git diff --check` passed. Installer/portable packaging and GitHub publication are delegated to the tagged CI workflow.
+
+## jPOS field packagers and EBCDIC — 24 November 2026
+
+Expanded the explicit codec mappings against the official jPOS field-packager tutorial and concrete class sources. The parser suite passes 127 tests, including 56 new compatibility cases covering ASCII/EBCDIC/BCD prefixes, fixed and L/LL/LLL/LLLL character/binary fields, signed amounts, odd BCD/F padding, packed hex, track-2 separators, malformed lengths, tertiary bitmaps, CP500 versus IBM1047 punctuation, raw offsets and following-field alignment. The application suite passes 271 tests with one opt-in large-file test skipped; the new workspace test verifies CP500 selection, source hex preservation and result invalidation when the code page changes.
+
+The desktop build to `artifacts/iso-ebcdic-check` passed with zero warnings/errors. In the running app, loaded the synthetic `example-ebcdic.xml`, selected Hex bytes and CP500, and parsed MTI `0200`, bitmap `6000000000800000`, account `12345`, processing code `000000`, and terminal `TERM[]! ` from CP500 hex. Results reported complete, and source values remained the original EBCDIC hex, including terminal `E3C5D9D44A5A4F40`. Decoder/length behavior has automated coverage; the live check used dark theme and did not repeat broader theme/DPI, clipboard or keyboard tests. Custom Java/composite packagers and nonstandard root layouts remain explicitly unsupported; see the class list in PLUGINS.md.
+
+## ISO 8583 results tree — 24 November 2026
+
+Replaced field cards with a native TreeView. Each field heading contains its decoded value once; children expose source value and wire details. New results default to level 1. Expand all, Collapse all and Expand level 1 were exercised with a truncated synthetic message, verifying retained MTI, bitmap, account, partial processing code and warning. Expand all exposed the account prefix `05`, full source `0512345`, hex and byte ranges; Collapse all retained only the four field headings; Expand level 1 restored the correct sources with wire details closed. This sequence exposed recycled UI content showing another node's text; the final template binds to node data and passed the same sequence without stale content.
+
+The final desktop build to `artifacts/iso-tree-verified` passed with zero warnings/errors. A separate output directory avoided replacing the running app's locked executable. No parser behavior changed. Alternate themes, narrow windows and keyboard/screen-reader navigation remain manual checks.
+
+## Text Compare line-number alignment — 24 November 2026
+
+Aligned each number's measured TextBlock baseline to the corresponding RichEdit text baseline, including the inner ScrollViewer's padding and position. This removes the vertical offset between line numbers and text while retaining scrolling and logical line numbering when wrapped.
+
+The separate-output Debug desktop build passed with zero warnings/errors, and `git diff --check` passed. Live checks verified alignment at the start of a 105-line input, around lines 100–105 after scrolling to the end, and before/after a long wrapped line. Alternate DPI and Windows text scaling remain manual checks.
+
+## Text Compare line numbers and wrapping — 24 November 2026
+
+Added logical line numbers inside both Text Compare inputs and a Wrap text checkbox controlling both editors. Gutter width grows with the number of digits, visible numbers follow each editor's scroll position, and wrapped continuations do not receive extra numbers. Only visible numbers are drawn, using a binary search over cached line starts. Wrapping leaves text and comparison highlights intact. Updated the help and README.
+
+The final separate-output Debug desktop build passed with zero warnings/errors, all 15 existing text-comparison utility tests passed, and `git diff --check` passed. Live preview checks used 80-line samples in both inputs, verified numbers beyond line 19 through line 80 after caret scrolling, wheel scrolling back through the input, wrapping a long logical line, returning to unwrapped text, preserved red/green comparison highlights and expansion when maximizing. An intermediate build could not replace the running preview's executable; the final build used a new output directory. Alternate DPI/text scaling and narrow stacked panes remain manual checks.
+
+## Message Compare expanding inputs — 24 November 2026
+
+Moved the Message 1 / Message 2 inputs into a fitted grid with equal flexible rows and removed their 240-DIP height cap. The editors now fill the input pane as the window grows, while the spec, guidance and actions keep their natural height. A minimum form height preserves usable editors and outer scrolling in smaller windows. Input headings and validation consistently use Message 1 / Message 2.
+
+The separate-output Debug desktop build passed with zero warnings/errors, and `git diff --check` passed. Live preview checks opened Message Compare, maximized the window and verified both editors expanded to fill the available height, then restored the window and checked that both inputs and the actions remained visible. No comparison logic changed in this layout update.
+
+## Message Compare request and reply pairs — 24 November 2026
+
+Message Compare now accepts one message per box or a request followed by its reply in each box. Matching is positional: request against request, then reply against reply. Paired field/subfield paths carry Request / Reply labels, and the summary identifies single-message or paired comparison. Both boxes must contain the same number of messages, with at most two each. Validation still rejects truncated previews and now checks every parsed message for fields. Updated the input guidance, help and README.
+
+All 12 Message Compare workspace cases passed, covering request-only behavior, paired values and filtering, mismatched counts, extra messages, returning to a single message, Clear, edits during parsing, and decoded reply subfields/missing fields with LF, CRLF and CR boundaries. The full application suite passed 263 tests with the existing opt-in 2-GiB test skipped. The separate-output Debug desktop build passed with zero warnings/errors. The sandboxed test runner could not connect to its test host; the compiled tests passed outside the sandbox. Live UI layout and interaction remain manual checks.
+
 ## Version 2.0.14 release checks — 23 November 2026
 
 Bumped the package/file version to 2.0.14 while retaining SDK assembly identity 2.0.0.0. This revision includes Message Compare and Text Compare, required-input feedback, timed-key scheduling changes, the plugin manager with optional private GitLab updates, and distinct neutral tab styling. Updated the README's plugin-management path and update summary.

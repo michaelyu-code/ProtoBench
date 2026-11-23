@@ -9,6 +9,8 @@
   "files": [
     "ExamplePlugin.dll",
     "ExamplePlugin.deps.json",
-    "definitions/messages/example-response.json"
+    "definitions/messages/example-response.json",
+    "definitions/iso8583/example-ascii.xml",
+    "definitions/iso8583/example-ebcdic.xml"
   ]
 }

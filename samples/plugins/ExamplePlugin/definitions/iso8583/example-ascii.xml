@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic demonstration only; supply your host's actual jPOS packager for real messages. -->
+<isopackager>
+  <isofield id="0" length="4" name="Message type indicator" class="org.jpos.iso.IFA_NUMERIC" />
+  <isofield id="1" length="16" name="Primary / secondary bitmap" class="org.jpos.iso.IFA_BITMAP" />
+  <isofield id="2" length="19" name="Synthetic account identifier" class="org.jpos.iso.IFA_LLNUM" />
+  <isofield id="3" length="6" name="Processing code" class="org.jpos.iso.IFA_NUMERIC" />
+  <isofield id="4" length="12" name="Transaction amount" class="org.jpos.iso.IFA_NUMERIC" />
+  <isofield id="11" length="6" name="Trace number" class="org.jpos.iso.IFA_NUMERIC" />
+  <isofield id="41" length="8" name="Terminal identifier" class="org.jpos.iso.IF_CHAR" />
+  <isofield id="55" length="999" name="ICC bytes" class="org.jpos.iso.IFA_LLLBINARY" />
+  <isofield id="70" length="3" name="Network management code" class="org.jpos.iso.IFA_NUMERIC" />
+</isopackager>

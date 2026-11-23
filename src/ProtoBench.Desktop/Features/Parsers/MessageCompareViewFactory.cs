@@ -25,15 +25,38 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         {
             Source = vm, Path = new PropertyPath(nameof(vm.SelectedFormatId)), Mode = BindingMode.TwoWay
         });
-        var first = Ui.Input(vm, nameof(vm.Message1), "Message box 1", true);
-        var second = Ui.Input(vm, nameof(vm.Message2), "Message box 2", true);
+        var first = Ui.Input(vm, nameof(vm.Message1), "Message 1", true);
+        var second = Ui.Input(vm, nameof(vm.Message2), "Message 2", true);
+        foreach (var editor in new[] { first, second })
+        {
+            editor.MaxHeight = double.PositiveInfinity;
+            editor.VerticalAlignment = VerticalAlignment.Stretch;
+            ScrollViewer.SetVerticalScrollBarVisibility(editor, ScrollBarVisibility.Auto);
+        }
         required.Require(spec, "Select a parser spec.");
-        required.Require(first, "Paste the first message.");
-        required.Require(second, "Paste the second message.");
-        var inputs = ToolLayout.Section("Messages · * required", spec, first, second,
-            Ui.Row(Ui.Primary(required.Guard(new Button { Content = "Compare", Command = vm.CompareCommand })),
+        required.Require(first, "Paste Message 1.");
+        required.Require(second, "Paste Message 2.");
+        var settings = ToolLayout.Stack(spec,
+            Ui.Text("Paste one request in each box, or paste the request followed by its reply in each box. Both boxes must contain the same number of messages.", 13));
+        var actions = ToolLayout.Stack(Ui.Row(Ui.Primary(required.Guard(new Button { Content = "Compare", Command = vm.CompareCommand })),
                 Ui.Button("Clear", () => { vm.ClearCommand.Execute(null); required.Clear(); }),
                 Ui.Button("Cancel", vm.Cancel), Ui.Progress(vm)), Ui.BoundText(vm, nameof(vm.Status)));
+        var editors = new Grid { RowSpacing = 8 };
+        editors.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        editors.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        editors.Children.Add(first);
+        Grid.SetRow(second, 1); editors.Children.Add(second);
+        var form = new Grid { RowSpacing = 8 };
+        form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        form.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        form.Children.Add(settings);
+        Grid.SetRow(editors, 1); form.Children.Add(editors);
+        Grid.SetRow(actions, 2); form.Children.Add(actions);
+        void ResizeInputs() => form.MinHeight = settings.ActualHeight + actions.ActualHeight + first.MinHeight + second.MinHeight + 24;
+        settings.SizeChanged += (_, _) => ResizeInputs();
+        actions.SizeChanged += (_, _) => ResizeInputs();
+        var inputs = ToolLayout.FittedSection("Messages", form);
         var onlyDifferences = new CheckBox { Content = "Show only differences" };
         onlyDifferences.SetBinding(CheckBox.IsCheckedProperty, new Binding
         {
@@ -66,8 +89,8 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         RefreshDiagnostics();
         Grid.SetRow(diagnostics, 1); results.Children.Add(diagnostics);
         Grid.SetRow(list, 2); results.Children.Add(list);
-        return ToolLayout.FittedPage(vm.Title, "Compare two messages using the same spec, including every decoded subfield.",
+        return ToolLayout.FittedPage(vm.Title, "Compare requests or request-and-reply pairs using the same spec, including every decoded subfield.",
             ToolLayout.Workspace(vm, inputs, ToolLayout.FittedSection("Comparison", results), () => vm.Rows.Count > 0, nameof(vm.Rows), 1.6),
-            ToolLayout.Help(Ui.Text("Paste exactly one message into each box, select its spec and choose Compare. Fields are matched by spec ID or name within their parent; repeated fields are matched by occurrence. Values are compared exactly, including case and whitespace, after the spec's parsing and decoding. Missing fields differ from empty values. Parent fields are marked changed when a subfield differs. Parser diagnostics appear above the results; review them before relying on a comparison. Editing either message or changing the spec clears the previous result.")));
+            ToolLayout.Help(Ui.Text("Paste one request into each box, or paste a request followed by its reply into each box, select the spec and choose Compare. Use the message boundaries expected by the spec. Messages are compared in pasted order: first against first (Request), then second against second (Reply). Paired results are labeled Request / Reply. Both boxes must contain the same number of messages, with at most two per box. Fields are matched by spec ID or name within their parent; repeated fields are matched by occurrence. Values are compared exactly, including case and whitespace, after the spec's parsing and decoding. Missing fields differ from empty values. Parent fields are marked changed when a subfield differs. Parser diagnostics appear above the results; review them before relying on a comparison. Editing either message or changing the spec clears the previous result.")));
     }
 }
