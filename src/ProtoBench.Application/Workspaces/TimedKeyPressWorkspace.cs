@@ -4,16 +4,18 @@ using ProtoBench.Application.Services;
 namespace ProtoBench.Application.Workspaces;
 
 /// <summary>UI-thread session; Tick is driven independently of whether its tab is visible.</summary>
-public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider? timeProvider = null) : ToolWorkspace
+public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider? timeProvider = null, Random? random = null) : ToolWorkspace
 {
     public override string ToolId => "timed-key-presser";
     public override string Title => "Timed Key Presser";
     public const int MaximumLogEntries = 1000;
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+    private readonly Random timingRandom = random ?? Random.Shared;
     private readonly Queue<string> entries = new();
     private KeyboardKey selectedKey = KeyboardKeys.All.Single(k => k.Name == "F24");
-    private string intervalSeconds = "300", activity = "", error = "";
-    private TimeSpan interval;
+    private string intervalSeconds = "200", activity = "", error = "";
+    private TimeSpan interval, nextDelay;
+    private bool randomizeTiming;
     private long lastAttempt;
     private bool disposed;
     private DateTimeOffset? nextPress;
@@ -30,6 +32,11 @@ public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider
         set { if (CanConfigure && SetProperty(ref intervalSeconds, value)) Error = ""; }
     }
     public bool IsRunning => IsBusy;
+    public bool RandomizeTiming
+    {
+        get => randomizeTiming;
+        set { if (CanConfigure) SetProperty(ref randomizeTiming, value); }
+    }
     public bool CanConfigure => !IsRunning && !disposed;
     public string ToggleLabel => IsRunning ? "Stop" : "Start";
     public string Activity { get => activity; private set => SetProperty(ref activity, value); }
@@ -47,13 +54,16 @@ public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider
         if (SelectedKey is null || !Keys.Contains(SelectedKey)) { Error = "Select a supported keyboard key."; return; }
         if (!double.TryParse(IntervalSeconds, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds)
             || !double.IsFinite(seconds) || seconds < 1 || seconds > 86400)
-        { Error = "Enter an interval from 1 to 86,400 seconds (300 = 5 minutes)."; return; }
+        { Error = "Enter an interval from 1 to 86,400 seconds (200 = 3 minutes 20 seconds)."; return; }
         interval = TimeSpan.FromSeconds(seconds);
-        lastAttempt = clock.GetTimestamp();
-        nextPress = clock.GetLocalNow() + interval;
-        Status = $"Running · {SelectedKey.Name} every {seconds:G} seconds";
+        ScheduleNext();
+        Status = RandomizeTiming
+            ? $"Running · {SelectedKey.Name} at random intervals from 1 to {seconds:G} seconds"
+            : $"Running · {SelectedKey.Name} every {seconds:G} seconds";
         IsBusy = true;
-        Append($"Started {SelectedKey.Name} every {seconds:G} seconds. First press after one interval.");
+        Append(RandomizeTiming
+            ? $"Started {SelectedKey.Name} with a new random delay from 1 to {seconds:G} seconds before each press."
+            : $"Started {SelectedKey.Name} every {seconds:G} seconds. First press after one interval.");
         NotifyState();
     }
 
@@ -69,19 +79,15 @@ public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider
 
     public void Tick()
     {
-        if (!IsRunning || disposed || clock.GetElapsedTime(lastAttempt) < interval) return;
+        if (!IsRunning || disposed || clock.GetElapsedTime(lastAttempt) < nextDelay) return;
         try
         {
-            if (keyboard.Press(SelectedKey) == KeyPressResult.Sent)
-            {
-                PressCount++;
-                Append($"Pressed {SelectedKey.Name} · #{PressCount:N0}");
-            }
-            else Append($"Skipped {SelectedKey.Name}: a modifier or the selected key is held down.");
+            keyboard.Press(SelectedKey);
+            PressCount++;
+            Append($"Pressed {SelectedKey.Name} · #{PressCount:N0}");
             // Schedule from now, not from the old deadline: waking/resuming never
             // produces a burst of overdue key presses.
-            lastAttempt = clock.GetTimestamp();
-            nextPress = clock.GetLocalNow() + interval;
+            ScheduleNext();
             OnPropertyChanged(nameof(Summary));
         }
         catch (Exception ex)
@@ -91,6 +97,15 @@ public sealed class TimedKeyPressWorkspace(IKeyboardInput keyboard, TimeProvider
             Status = "Stopped after a key press failed";
             Append($"Key press failed: {ex.Message}");
         }
+    }
+
+    private void ScheduleNext()
+    {
+        nextDelay = RandomizeTiming
+            ? TimeSpan.FromSeconds(1 + timingRandom.NextDouble() * (interval.TotalSeconds - 1))
+            : interval;
+        lastAttempt = clock.GetTimestamp();
+        nextPress = clock.GetLocalNow() + nextDelay;
     }
 
     private void Append(string message)

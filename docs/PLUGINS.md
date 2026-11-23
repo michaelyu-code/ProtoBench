@@ -4,11 +4,58 @@ ProtoBench loads trusted .NET plugins for custom tools, complete log parsers, fi
 
 ## Import and manage
 
-Open **Settings → Plugins & custom tools → Import plugin…**. Select a `.nstplugin` (ZIP) package, `.zip`, `plugin.json`, or an entry DLL beside `plugin.json`. Review the package name/version, then import and restart. Import copies the declared files; it does not execute code. The entry type executes when the app next starts.
+Open **Settings → Plugin manager → Import plugin…**. Select a `.nstplugin` (ZIP) package, `.zip`, `plugin.json`, or an entry DLL beside `plugin.json`. Review the package name/version, then import and restart. Import copies the declared files; it does not execute code. The entry type executes when the app next starts.
 
 Plugins live in `%LOCALAPPDATA%/ProtoBench/plugins/<id>/`. The Settings checkbox enables/disables the next startup; currently loaded tools remain available until restart. Settings shows whether a package is loaded this session. Startup notifications identify rejected manifests and load/registration failures. To update a plugin, import a package with the same ID and a newer numeric version, then use **Reload app**. Import validates and stages the complete replacement without changing the running plugin. Settings shows the pending version; the next startup applies it before loading plugins, preserves the current enabled setting, and removes files omitted by the replacement. A still newer import can replace a pending update. Equal versions and downgrades are rejected. Invalid imports leave the installed plugin and any pending update intact. To remove a plugin, close the app and remove its folder and any `.update-<id>` folder using **Open plugins folder**. There is no hot reload.
 
 Plugins run with the host process's permissions. Assembly loading contexts separate dependencies; they are not a security sandbox or a crash/timeout boundary. Install developer code you trust. Ordinary managed detection/decoding errors are contained, but native crashes, process termination and non-cooperative infinite loops can still affect the application. A plugin that requires isolation must run its own constrained worker process; that is outside this API.
+
+## Optional online updates
+
+Plugins can opt into online updates by adding an `updateUrl` property to `plugin.json`:
+
+```json
+"updateUrl": "https://plugins.example.com/example.toolkit/latest.json"
+```
+
+The URL must use HTTPS without embedded credentials or a fragment. Omit the property for manual-only updates; existing packages continue to work. The host reads this metadata without executing the plugin. Update checks run only when requested in **Settings → Plugin manager**, individually or using **Check all for updates**. Disabled plugins can also be checked. Each plugin shows its update source, result, release notes and a download button when a newer compatible release exists. Plugins without an update URL show a manual-import explanation.
+
+Publish a JSON feed at that URL:
+
+```json
+{
+  "id": "example.toolkit",
+  "version": "1.1.0",
+  "apiVersion": 2,
+  "packageUrl": "https://plugins.example.com/example.toolkit/1.1.0.nstplugin",
+  "sha256": "<64 hexadecimal characters from the package's SHA-256 hash>",
+  "releaseNotes": "Changes in this version."
+}
+```
+
+`id` must match the installed plugin, `version` must be a newer numeric version than both the installed and pending versions, and `apiVersion` must match the host SDK API. `packageUrl` must be an absolute HTTPS URL without credentials or a fragment and return a `.nstplugin`/ZIP package. Generate its checksum with `(Get-FileHash ./example.toolkit.nstplugin -Algorithm SHA256).Hash`. Release notes are optional plain text. The feed is limited to 64 KiB, downloads and expanded packages to 128 MiB, and each check/download to five minutes.
+
+**Download** verifies the package checksum and its manifest's ID, version and API, then uses the same validated staged import as a manual update. A failure leaves the installed plugin and any pending update intact. **Reload app** applies downloaded updates; enabled/disabled choices are preserved. Checksums detect damaged or mismatched downloads; trust still depends on the developer and their HTTPS feed. This is a new host feature: plugins using `updateUrl` require a host with this support because earlier hosts reject unknown manifest properties.
+
+### Private GitLab projects
+
+GitLab.com and self-managed GitLab projects can use authenticated API URLs. For example, if project `12345` contains `updates/latest.json`, set:
+
+```json
+"updateUrl": "https://gitlab.example.com/api/v4/projects/12345/repository/files/updates%2Flatest.json/raw?ref=main"
+```
+
+The feed uses the same format as above. Its `packageUrl` can point to a packaged plugin committed under a version tag:
+
+```json
+"packageUrl": "https://gitlab.example.com/api/v4/projects/12345/repository/files/dist%2Fexample.toolkit-1.1.0.nstplugin/raw?ref=v1.1.0"
+```
+
+Replace the server, numeric project ID, URL-encoded file paths and refs with your project's values. Use GitLab's API raw-file URLs rather than web UI blob/raw pages that can redirect to sign-in. The token's account must have access to the project. For both files served through the [Repository Files API](https://docs.gitlab.com/api/repository_files/), a personal access token with `read_repository` is sufficient; `read_api` also supports reading these files. If binaries use a different API such as the package registry, choose a token with read permission for that API as well. This implementation uses GitLab's `PRIVATE-TOKEN` header; deploy tokens and CI job tokens using other header types are not supported.
+
+In **Settings → Plugin manager**, expand the plugin's **Private GitLab access**, paste the token, and select **Save token**. Check for updates, then download the offered version. Use Save token again to rotate it, or **Remove token** to forget it. Do not put a token in the manifest, feed, package URL or repository.
+
+Tokens are stored in the [Windows Credential Locker](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker), outside plugin folders and JSON settings. Windows controls the vault's protection and any credential roaming. Each credential is scoped to one plugin ID and the feed's HTTPS origin (host and port). The updater sends it in a request header only to that origin, for both feed checks and package downloads. Redirects are followed explicitly, with at most five hops; HTTP destinations are rejected and other HTTPS origins receive no token. An external package host must therefore allow an anonymous or signed-URL download. Authentication/access failures show a token/permission hint. **Remove all local data** also removes ProtoBench's saved plugin update tokens.
 
 ## Build the example
 

@@ -15,6 +15,7 @@ public sealed class CertificateViewFactory(FileDialogService dialogs) : IWorkspa
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (CertificateWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         var feedback = Ui.Text("");
         void Copy(string text)
         {
@@ -30,6 +31,7 @@ public sealed class CertificateViewFactory(FileDialogService dialogs) : IWorkspa
         }
         var input = Ui.Input(vm, nameof(vm.Input), "PEM certificate", true);
         input.MaxLength = CertificateInspector.MaximumInputBytes;
+        required.Require(input, "Paste a PEM certificate, or use Open certificate.");
         var tabs = new TabView { IsAddTabButtonVisible = false, CanDragTabs = false, CanReorderTabs = false, TabWidthMode = TabViewWidthMode.SizeToContent };
         var summary = Ui.Text("");
         summary.IsTextSelectionEnabled = true;
@@ -64,12 +66,12 @@ public sealed class CertificateViewFactory(FileDialogService dialogs) : IWorkspa
         return ToolLayout.Page(vm.Title, "Inspect X.509 certificates and extract RSA public key components locally.",
             ToolLayout.Workspace(vm,
                 ToolLayout.Section("Input", input,
-                    ToolLayout.Columns(150, Ui.Primary(Ui.AsyncButton("Inspect PEM", vm.InspectAsync)), Ui.AsyncButton("Open certificate…", async () =>
+                    ToolLayout.Columns(150, Ui.Primary(Ui.AsyncButton("Inspect PEM", () => required.RunAsync(vm.InspectAsync))), Ui.AsyncButton("Open certificate…", async () =>
                     {
                         var path = await dialogs.OpenAsync();
                         if (path is not null) await vm.LoadAsync(path);
                     }, ex => feedback.Text = ex.Message)),
-                    Ui.Button("Clear inputs", vm.Clear), Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status)))),
+                    Ui.Button("Clear inputs", () => { vm.Clear(); required.Clear(); }), Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status)))),
                 ToolLayout.Section("Inspection", Ui.Text("Trust not evaluated. Date status alone does not establish trust."), tabs), () => vm.Details.Length > 0, nameof(vm.Details)), feedback,
             ToolLayout.Help(Ui.Text("Paste one PEM CERTIFICATE block or open a PEM/DER .cer, .crt or .pem file (maximum 1 MiB). Shows subject, issuer, serial number, UTC validity dates, algorithms, fingerprints and extensions including SANs and key usage. RSA n/e are available in unsigned hex and decimal. Public keys export as SubjectPublicKeyInfo PEM (PUBLIC KEY). Inputs stay local and are not saved. Certificate chains, signatures, hostname matching and revocation are not validated. Bundles, PFX/PKCS#12, CSRs and private keys are not supported.")));
     }

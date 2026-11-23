@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Markup;
 using ProtoBench.Application.Tools;
 using ProtoBench.Desktop.Controls;
 
@@ -160,14 +161,14 @@ public sealed partial class DashboardView : UserControl
         var actions = Ui.Row(primary, compact ? more : newTab);
         Grid.SetRow(actions, 2);
         layout.Children.Add(actions);
-        return new Border
-        {
-            Child = layout,
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            BorderBrush = Resource("CardStrokeColorDefaultBrush"),
-            Background = Resource("CardBackgroundFillColorDefaultBrush")
-        };
+        var card = (Border)XamlReader.Load("""
+            <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                CornerRadius="8" BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            """);
+        card.Child = layout;
+        return card;
     }
 
     private void ReflowCards()

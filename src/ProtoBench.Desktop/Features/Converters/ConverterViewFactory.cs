@@ -13,6 +13,7 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (ConverterWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         ComboBox Bases(string header, int initial, Action<int> change)
         {
             var combo = new ComboBox { Header = header, ItemsSource = new[] { 2, 10, 16 }, SelectedItem = initial, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -52,6 +53,7 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         };
         var help = Ui.Text("");
         var input = Ui.Input(vm, "Input", "Value", true);
+        required.Require(input, "Enter a number to convert.", () => vm.Mode == ConversionMode.Numeric);
         void UpdateMode()
         {
             numericOptions.Visibility = vm.Mode == ConversionMode.Numeric ? Visibility.Visible : Visibility.Collapsed;
@@ -74,7 +76,7 @@ public sealed class ConverterViewFactory : IWorkspaceViewFactory
         vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(vm.Output)) copyStatus.Text = ""; };
         UpdateMode();
         var inputs = ToolLayout.Section("Inputs", mode, numericOptions, encoding, input, removeSpaces,
-            Ui.Primary(new Button { Content = "Convert", Command = vm.ConvertCommand }), Ui.BoundText(vm, "Error"),
+            Ui.Primary(required.Guard(new Button { Content = "Convert", Command = vm.ConvertCommand })), Ui.BoundText(vm, "Error"),
             Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, "Status")));
         var copy = Ui.Button("Copy result", () => { if (vm.Output.Length == 0) return; try { var data = new DataPackage(); data.SetText(vm.Output); Clipboard.SetContent(data); copyStatus.Text = "Copied"; } catch { copyStatus.Text = "Clipboard is unavailable. Select the result and copy manually."; } });
         var results = ToolLayout.TextResult("Results", result, copy, copyStatus, aboveResult: compactHex);

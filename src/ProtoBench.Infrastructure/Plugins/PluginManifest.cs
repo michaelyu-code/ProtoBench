@@ -8,6 +8,10 @@ namespace ProtoBench.Infrastructure.Plugins;
 public sealed record PluginManifest(int SchemaVersion, int ApiVersion, string Id, string Name, string Version,
     string EntryAssembly, string EntryType, string[] Files)
 {
+    /// <summary>Optional HTTPS URL of the developer's update feed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? UpdateUrl { get; init; }
+
     public static PluginManifest Parse(string json)
     {
         var manifest = JsonSerializer.Deserialize<PluginManifest>(json, new JsonSerializerOptions
@@ -30,7 +34,16 @@ public sealed record PluginManifest(int SchemaVersion, int ApiVersion, string Id
         if (manifest.Files.Any(f => f.Equals("plugin.json", StringComparison.OrdinalIgnoreCase) ||
             f.Split('/').Any(part => part.StartsWith('.'))))
             throw new InvalidDataException("Reserved package file name.");
+        if (manifest.UpdateUrl is not null) ValidateUpdateUrl(manifest.UpdateUrl);
         return manifest;
+    }
+
+    internal static Uri ValidateUpdateUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment))
+            throw new InvalidDataException("Plugin updates require an HTTPS URL without credentials or a fragment.");
+        return uri;
     }
 
     public static void ValidateRelativePath(string path)

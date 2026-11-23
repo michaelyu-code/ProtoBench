@@ -37,6 +37,8 @@ internal static class LocalDataRemoval
                 throw new ArgumentException("Invalid local data cleanup request.");
             WaitForParent(parentId, parentStarted);
             EnsureNoOtherInstances(Environment.ProcessId);
+            WinRT.ComWrappersSupport.InitializeComWrappers();
+            PluginUpdateCredentials.RemoveAll();
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             for (var attempt = 0; ; attempt++)
             {
@@ -44,7 +46,7 @@ internal static class LocalDataRemoval
                 catch (Exception ex) when (attempt < 9 && ex is IOException or UnauthorizedAccessException)
                 { Thread.Sleep(300); }
             }
-            ShowMessage("ProtoBench's local settings, plugins, custom definitions and logs have been removed.\n\nProtoBench is still installed. You can now uninstall it through Windows Settings, or open it again with default settings.", error: false);
+            ShowMessage("ProtoBench's local settings, plugins, saved plugin update tokens, custom definitions and logs have been removed.\n\nProtoBench is still installed. You can now uninstall it through Windows Settings, or open it again with default settings.", error: false);
         }
         catch (Exception ex)
         {

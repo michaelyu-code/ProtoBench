@@ -12,7 +12,9 @@ public sealed class GeneratorViewFactory(FileDialogService dialogs) : IWorkspace
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (GeneratorWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         var picker = new ComboBox { Header = "Template", HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = vm.Generators, DisplayMemberPath = "Name" };
+        required.Require(picker, "Select a generator template.");
         var hint = Ui.Text("");
         var hex = new HexViewer { Header = "Exact output bytes (hex)" };
         var text = new RawTextViewer { Header = "Text preview (UTF-8 / ASCII)" };
@@ -23,6 +25,22 @@ public sealed class GeneratorViewFactory(FileDialogService dialogs) : IWorkspace
         input.MinHeight = 120;
         var fields = ToolLayout.Stack();
         var editor = new ComboBox { Header = "Edit as", ItemsSource = new[] { "Fields", "JSON" }, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var fieldEditors = new List<TextBox>();
+        required.Add(input, () =>
+        {
+            try
+            {
+                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(vm.Inputs);
+                if (values is null || values.Values.Any(v => v is null)) return "Enter a JSON object of string values.";
+                if (picker.SelectedItem is ProtoBench.Generation.Engines.FixedWidthGenerator generator)
+                {
+                    var missing = generator.RequiredInputNames.Where(name => string.IsNullOrWhiteSpace(values.GetValueOrDefault(name))).ToArray();
+                    if (missing.Length > 0) return "Required values: " + string.Join(", ", missing) + ".";
+                }
+                return null;
+            }
+            catch (JsonException) { return "Enter a JSON object of string values."; }
+        }, () => editor.SelectedIndex == 1);
         Dictionary<string, string>? ReadValues()
         {
             try
@@ -38,12 +56,16 @@ public sealed class GeneratorViewFactory(FileDialogService dialogs) : IWorkspace
         {
             var values = ReadValues();
             if (values is null) { editor.SelectedIndex = 1; return; }
-            fields.Children.Clear();
+            foreach (var old in fieldEditors) required.Remove(old);
+            fieldEditors.Clear(); fields.Children.Clear();
             if (picker.SelectedItem is not ProtoBench.Generation.Abstractions.IFileGenerator generator) return;
             foreach (var name in generator.InputNames)
             {
                 var field = new TextBox { Header = name, Text = values.GetValueOrDefault(name, ""), TextWrapping = TextWrapping.Wrap };
                 field.TextChanged += (_, _) => { values[name] = field.Text; vm.Inputs = JsonSerializer.Serialize(values, new JsonSerializerOptions { WriteIndented = true }); };
+                fieldEditors.Add(field);
+                if (generator is ProtoBench.Generation.Engines.FixedWidthGenerator fixedWidth && fixedWidth.RequiredInputNames.Contains(name))
+                    required.Require(field, $"Enter a value for {name}.", () => editor.SelectedIndex == 0);
                 fields.Children.Add(field);
             }
         }
@@ -52,6 +74,7 @@ public sealed class GeneratorViewFactory(FileDialogService dialogs) : IWorkspace
             if (editor.SelectedIndex == 0) BuildFields();
             fields.Visibility = editor.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
             input.Visibility = editor.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+            required.Refresh();
         };
         picker.SelectionChanged += (_, _) =>
         {
@@ -62,9 +85,9 @@ public sealed class GeneratorViewFactory(FileDialogService dialogs) : IWorkspace
         };
         if (vm.Generators.Count > 0) picker.SelectedIndex = 0;
         editor.SelectedIndex = 0;
-        Button Save() => Ui.AsyncButton("Save file…", async () => { var path = await dialogs.SaveAsync(); if (path is not null) await vm.SaveAsync(path); }, ex => error.Text = ex.Message);
+        Button Save() => Ui.AsyncButton("Save file…", async () => { if (!required.Validate()) return; var path = await dialogs.SaveAsync(); if (path is not null) await vm.SaveAsync(path); }, ex => error.Text = ex.Message);
         var cancel = Ui.Button("Cancel", vm.Cancel);
-        var preview = Ui.Primary(Ui.AsyncButton("Preview", vm.PreviewAsync, ex => error.Text = ex.Message));
+        var preview = Ui.Primary(Ui.AsyncButton("Preview", () => required.RunAsync(vm.PreviewAsync), ex => error.Text = ex.Message));
         void UpdateBusy()
         {
             cancel.Visibility = vm.IsBusy ? Visibility.Visible : Visibility.Collapsed;

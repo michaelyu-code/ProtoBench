@@ -14,6 +14,7 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (PaymentWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         var modes = new ComboBox { Header = "Operation", ItemsSource = vm.Modes, SelectedIndex = vm.Mode, HorizontalAlignment = HorizontalAlignment.Stretch };
         modes.SelectionChanged += (_, _) => { if (modes.SelectedIndex >= 0) vm.Mode = modes.SelectedIndex; };
         var input = Ui.Input(vm, nameof(vm.Input), vm.InputLabel, true);
@@ -40,9 +41,11 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             var key = new PasswordBox { Header = "AC session key (16 bytes, hex)", MaxLength = 128, PasswordRevealMode = PasswordRevealMode.Peek };
             key.Password = vm.Key;
             key.PasswordChanged += (_, _) => vm.Key = key.Password;
+            required.Require(key, "Enter the AC session key.");
             vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Key) && key.Password != vm.Key) key.Password = vm.Key; };
             inputs.Children.Add(key);
         }
+        required.Require(input, "Enter a value to calculate or decode.", () => vm is LuhnWorkspace or EmvWorkspace or ArqcWorkspace || vm is BitmapWorkspace && vm.Mode != 1);
         inputs.Children.Add(input);
         if (vm.UsesKey)
         {
@@ -55,6 +58,7 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             : vm is BitmapWorkspace ? vm.Mode == 1 ? "Encode" : "Decode" : vm is EmvWorkspace ? "Decode" : "Calculate ARQC";
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Mode)) UpdateAction(); };
         UpdateAction();
+        required.Guard(calculate);
         if (vm is EmvWorkspace live)
         {
             inputs.Children.Add(Ui.Button("Load example", live.LoadExample));
@@ -62,7 +66,7 @@ public sealed class PaymentViewFactory(string toolId) : IWorkspaceViewFactory
             vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.InputLabel)) UpdateCalculate(); };
             UpdateCalculate();
         }
-        inputs.Children.Add(Ui.Row(calculate, new Button { Content = "Clear inputs", Command = vm.ClearCommand }));
+        inputs.Children.Add(Ui.Row(calculate, Ui.Button("Clear inputs", () => { vm.ClearCommand.Execute(null); required.Clear(); })));
         inputs.Children.Add(Ui.BoundText(vm, nameof(vm.Error)));
         if (vm is not EmvWorkspace) inputs.Children.Add(Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
         if (vm is LuhnWorkspace) output.FontSize = 18;

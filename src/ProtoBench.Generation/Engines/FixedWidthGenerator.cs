@@ -12,6 +12,7 @@ public sealed class FixedWidthGenerator : IFileGenerator
     public string GeneratorId => definition.Id;
     public string Name => definition.Name;
     public IReadOnlyList<string> InputNames => definition.Fields.Select(f => f.Name).ToArray();
+    public IReadOnlyList<string> RequiredInputNames => definition.Fields.Where(f => f.Required).Select(f => f.Name).ToArray();
     public FixedWidthGenerator(GeneratorDefinition definition)
     {
         definition.Validate();

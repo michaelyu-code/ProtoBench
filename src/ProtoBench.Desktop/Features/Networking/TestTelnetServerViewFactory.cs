@@ -14,8 +14,11 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (TestTelnetServerWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         var address = Ui.Input(vm, nameof(vm.ListenAddress), "Listen IP"); address.MaxLength = 45;
         var port = Ui.Input(vm, nameof(vm.ListenPort), "Listen port (0 = automatic)"); port.MaxLength = 5;
+        required.Add(address, () => System.Net.IPAddress.TryParse(vm.ListenAddress.Trim(), out _) ? null : "Enter a local listen IP address.");
+        required.Add(port, () => int.TryParse(vm.ListenPort, out var value) && value is >= 0 and <= 65535 ? null : "Enter a port from 0 to 65535.");
         var profile = new ComboBox
         {
             Header = "Server profile", ItemsSource = vm.ServerProfiles,
@@ -35,9 +38,11 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
         tls.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.UseTls)), Mode = BindingMode.TwoWay });
         var password = new PasswordBox { Header = "PFX password", Password = vm.CertificatePassword };
         password.PasswordChanged += (_, _) => vm.CertificatePassword = password.Password;
+        var hostname = Ui.Input(vm, nameof(vm.CertificateHostname), "Test certificate hostname / IP");
+        required.Require(hostname, "Enter a hostname or IP for the test certificate.", () => vm.UseTls && string.IsNullOrWhiteSpace(vm.CertificatePath));
         var tlsSettings = ToolLayout.Stack(
             Ui.Input(vm, nameof(vm.CertificatePath), "PFX path (optional)"), password,
-            Ui.Input(vm, nameof(vm.CertificateHostname), "Test certificate hostname / IP"),
+            hostname,
             Ui.Text("Leave the PFX path empty to generate a temporary self-signed certificate. Clients must trust that certificate or allow it for testing. TLS starts immediately on connection."));
         void UpdateTls() => tlsSettings.Visibility = vm.UseTls ? Visibility.Visible : Visibility.Collapsed;
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.UseTls)) UpdateTls(); };
@@ -52,7 +57,7 @@ public sealed class TestTelnetServerViewFactory : IWorkspaceViewFactory
         var configuration = new Expander { Header = "Server configuration", IsExpanded = true, Content = config,
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.CanConfigure)) configuration.IsExpanded = vm.CanConfigure; };
-        var start = Ui.Primary(Ui.Button("Start server", vm.Start));
+        var start = Ui.Primary(Ui.Button("Start server", () => required.Run(vm.Start)));
         start.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
         var stop = new Button { Content = "Stop server" };
         stop.Click += async (_, _) => await vm.StopAsync();

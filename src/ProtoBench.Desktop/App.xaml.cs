@@ -86,7 +86,15 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddTransient<TextCleanupWorkspace>();
         collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TextCleanupWorkspace>("text-cleanup", sp));
         collection.AddSingleton<IWorkspaceViewFactory, TextCleanupViewFactory>();
+        collection.AddSingleton(new ToolDescriptor("text-compare", "Text Compare", "Compare two texts and highlight added and removed characters side by side.", ToolCategory.Utilities, NavigationIcons.TextCompare));
+        collection.AddTransient<TextCompareWorkspace>();
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TextCompareWorkspace>("text-compare", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, TextCompareViewFactory>();
         collection.AddSingleton(new ToolDescriptor("log-parser", "Log Parser", "Detect and inspect log formats supplied by extensions or custom definitions.", ToolCategory.Parsers, NavigationIcons.LogParser));
+        collection.AddSingleton(new ToolDescriptor("message-compare", "Message Compare", "Compare two messages by spec, including fields and decoded subfields.", ToolCategory.Parsers, NavigationIcons.MessageCompare));
+        collection.AddTransient<MessageCompareWorkspace>();
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<MessageCompareWorkspace>("message-compare", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, MessageCompareViewFactory>();
         collection.AddSingleton(new ToolDescriptor("file-generator", "File Generator", "Validate, preview and save fixed-width records.", ToolCategory.Generators, NavigationIcons.FileGenerator));
         collection.AddSingleton(new ToolDescriptor("emv-decoder", "EMV Tag Decoder", "13 EMV tags, scheme profiles, Form Factor / Third Party Data, CVM, TTQ, CTQ and BER-TLV.", ToolCategory.Payments, NavigationIcons.EmvDecoder));
         collection.AddSingleton(new ToolDescriptor("iso8583-bitmap", "ISO 8583 Bitmap", "Decode hex/binary bitmaps and encode primary/secondary field lists.", ToolCategory.Payments, NavigationIcons.IsoBitmap));

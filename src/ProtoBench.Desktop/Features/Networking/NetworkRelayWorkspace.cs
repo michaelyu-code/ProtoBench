@@ -42,6 +42,7 @@ public sealed class NetworkRelayWorkspace(IAtomicFileWriter writer) : ToolWorksp
         set { if (SetProperty(ref textEncoding, value)) OnPropertyChanged(nameof(SelectedText)); }
     }
     private X509Certificate2? generatedCertificate, activeCertificate, activeRoot;
+    public bool HasGeneratedCertificate => generatedCertificate is not null;
     private TcpRelay? relay;
     private RelayCaptureBuffer capture = new();
     public ObservableCollection<RelayCaptureEntry> Entries { get; } = [];

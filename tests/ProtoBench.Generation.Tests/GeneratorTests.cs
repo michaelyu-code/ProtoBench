@@ -9,6 +9,22 @@ public sealed class GeneratorTests
     private static GeneratorDefinition Definition() => GeneratorDefinition.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions", "generators", "synthetic-fixed.json")));
     private static Dictionary<string, string> Inputs() => new() { ["kind"] = "FX", ["name"] = "ALPHA", ["count"] = "42" };
     [Fact]
+    public async Task RequiredInputMetadataMatchesGenerationRules()
+    {
+        var generator = new FixedWidthGenerator(Definition() with
+        {
+            Fields = [new() { Name = "required", Length = 2 }, new() { Name = "optional", Length = 2, Required = false }]
+        });
+        Assert.Equal(new[] { "required" }, generator.RequiredInputNames);
+        using var valid = new MemoryStream();
+        Assert.True((await generator.GenerateAsync(new Dictionary<string, string> { ["required"] = "OK" }, valid)).Success);
+        using var invalid = new MemoryStream();
+        var result = await generator.GenerateAsync(new Dictionary<string, string> { ["optional"] = "OK" }, invalid);
+        Assert.False(result.Success);
+        Assert.Contains(result.Diagnostics, d => d.Code == "generate.required" && d.Message.Contains("required"));
+        Assert.Empty(invalid.ToArray());
+    }
+    [Fact]
     public async Task ExactBytesMatchFixture()
     {
         var g = new FixedWidthGenerator(Definition());

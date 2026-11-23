@@ -1,0 +1,73 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Markup;
+using ProtoBench.Application.Workspaces;
+using ProtoBench.Desktop.Controls;
+using ProtoBench.Desktop.Services;
+
+namespace ProtoBench.Desktop.Features.Parsers;
+
+public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
+{
+    public string ToolId => "message-compare";
+
+    public FrameworkElement Create(ToolWorkspace workspace)
+    {
+        var vm = (MessageCompareWorkspace)workspace;
+        var required = new RequiredInputs(vm);
+        var spec = new ComboBox
+        {
+            Header = "Spec", ItemsSource = vm.Parsers, DisplayMemberPath = "Name", SelectedValuePath = "FormatId",
+            HorizontalAlignment = HorizontalAlignment.Stretch, PlaceholderText = "Select a parser spec"
+        };
+        spec.SetBinding(ComboBox.SelectedValueProperty, new Binding
+        {
+            Source = vm, Path = new PropertyPath(nameof(vm.SelectedFormatId)), Mode = BindingMode.TwoWay
+        });
+        var first = Ui.Input(vm, nameof(vm.Message1), "Message box 1", true);
+        var second = Ui.Input(vm, nameof(vm.Message2), "Message box 2", true);
+        required.Require(spec, "Select a parser spec.");
+        required.Require(first, "Paste the first message.");
+        required.Require(second, "Paste the second message.");
+        var inputs = ToolLayout.Section("Messages · * required", spec, first, second,
+            Ui.Row(Ui.Primary(required.Guard(new Button { Content = "Compare", Command = vm.CompareCommand })),
+                Ui.Button("Clear", () => { vm.ClearCommand.Execute(null); required.Clear(); }),
+                Ui.Button("Cancel", vm.Cancel), Ui.Progress(vm)), Ui.BoundText(vm, nameof(vm.Status)));
+        var onlyDifferences = new CheckBox { Content = "Show only differences" };
+        onlyDifferences.SetBinding(CheckBox.IsCheckedProperty, new Binding
+        {
+            Source = vm, Path = new PropertyPath(nameof(vm.DifferencesOnly)), Mode = BindingMode.TwoWay
+        });
+        var list = new ListView { SelectionMode = ListViewSelectionMode.None, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, "Field and subfield comparison");
+        list.SetBinding(ItemsControl.ItemsSourceProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.VisibleRows)) });
+        list.ItemContainerStyle = (Style)XamlReader.Load("""
+            <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="ListViewItem">
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <Setter Property="Padding" Value="0" />
+            </Style>
+            """);
+        var templates = new ResourceDictionary { Source = new Uri("ms-appx:///Features/Parsers/MessageCompareTemplates.xaml") };
+        list.ItemTemplate = (DataTemplate)templates["ComparisonTemplate"];
+        var results = new Grid { RowSpacing = 8 };
+        results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        results.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        results.Children.Add(ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Summary)), onlyDifferences,
+            Ui.Text("Yellow edge = changed · Purple edge = missing. Red / green marks the differing text span.", 13)));
+        var diagnostics = new Expander
+        {
+            Header = "Parser diagnostics", HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = new ScrollViewer { Content = Ui.BoundText(vm, nameof(vm.Diagnostics)), MaxHeight = 100, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }
+        };
+        void RefreshDiagnostics() => diagnostics.Visibility = vm.Diagnostics.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.Diagnostics)) RefreshDiagnostics(); };
+        RefreshDiagnostics();
+        Grid.SetRow(diagnostics, 1); results.Children.Add(diagnostics);
+        Grid.SetRow(list, 2); results.Children.Add(list);
+        return ToolLayout.FittedPage(vm.Title, "Compare two messages using the same spec, including every decoded subfield.",
+            ToolLayout.Workspace(vm, inputs, ToolLayout.FittedSection("Comparison", results), () => vm.Rows.Count > 0, nameof(vm.Rows), 1.6),
+            ToolLayout.Help(Ui.Text("Paste exactly one message into each box, select its spec and choose Compare. Fields are matched by spec ID or name within their parent; repeated fields are matched by occurrence. Values are compared exactly, including case and whitespace, after the spec's parsing and decoding. Missing fields differ from empty values. Parent fields are marked changed when a subfield differs. Parser diagnostics appear above the results; review them before relying on a comparison. Editing either message or changing the spec clears the previous result.")));
+    }
+}

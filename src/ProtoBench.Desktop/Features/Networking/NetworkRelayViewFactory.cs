@@ -17,8 +17,9 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (NetworkRelayWorkspace)workspace;
+        var required = new RequiredInputs(vm);
+        var creatingCertificate = false;
         var fields = new Dictionary<string, TextBox>();
-        var validationMessages = new Dictionary<string, TextBlock>();
         var revealConfiguration = () => { };
         var feedback = Ui.Text("");
         feedback.MaxLines = 2; feedback.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -32,11 +33,16 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         {
             var box = Ui.Input(vm, property, header); box.MaxLength = limit;
             fields[property] = box;
-            var message = Ui.Text("");
-            message.Foreground = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SystemFillColorCriticalBrush"];
-            validationMessages[property] = message;
-            box.TextChanged += (_, _) => message.Text = "";
-            return ToolLayout.Stack(box, message);
+            required.Add(box, () => creatingCertificate && property == nameof(vm.CertificateName)
+                ? string.IsNullOrWhiteSpace(vm.CertificateName) ? "Enter a DNS name or IP for the test certificate." : null
+                : vm.ValidateConfiguration().GetValueOrDefault(property), () => property switch
+                {
+                    nameof(vm.ListenAddress) or nameof(vm.ListenPort) or nameof(vm.UpstreamHost) or nameof(vm.UpstreamPort) => true,
+                    nameof(vm.CertificatePath) => vm.IncomingTls && !vm.AutoDetectIncomingTls && !vm.HasGeneratedCertificate,
+                    nameof(vm.CertificateName) => creatingCertificate || vm.AutoDetectIncomingTls && !vm.HasGeneratedCertificate && string.IsNullOrWhiteSpace(vm.CertificatePath),
+                    _ => false
+                });
+            return box;
         }
         CheckBox Check(string property, string label)
         {
@@ -60,7 +66,11 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
             Header = "Incoming TLS certificate", HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Content = ToolLayout.Stack(Ui.Text("Create a temporary certificate, or load your own PFX/P12. Configure your test client to trust the certificate and connect using its DNS name/IP."),
                 Input(nameof(vm.CertificateName), "Test certificate DNS name or IP"),
-                Ui.Button("Create test certificate", vm.CreateTestCertificate),
+                Ui.Button("Create test certificate", () =>
+                {
+                    creatingCertificate = true;
+                    if (required.Validate(fields[nameof(vm.CertificateName)])) vm.CreateTestCertificate();
+                }),
                 Ui.BoundText(vm, nameof(vm.CertificateInfo)),
                 Ui.AsyncButton("Export public test certificate…", async () =>
                 {
@@ -98,24 +108,24 @@ public sealed class NetworkRelayViewFactory(FileDialogService dialogs) : IWorksp
         var start = Ui.Primary(new Button { Content = "Start relay" });
         start.Click += async (_, _) =>
         {
-            foreach (var message in validationMessages.Values) message.Text = "";
+            creatingCertificate = false;
             var errors = vm.ValidateConfiguration();
             if (errors.Count > 0)
             {
                 revealConfiguration();
                 if (errors.ContainsKey(nameof(vm.CertificatePath)) || errors.ContainsKey(nameof(vm.CertificateName))) certificateOptions.IsExpanded = true;
                 feedback.Text = "Check the highlighted connection fields.";
-                foreach (var (property, message) in errors) validationMessages[property].Text = message;
+                required.Validate();
                 // Bring the first invalid field into the expanded configuration.
                 start.DispatcherQueue.TryEnqueue(() =>
                 {
                     var firstField = fields[errors.Keys.First()];
                     firstField.Focus(FocusState.Programmatic);
                     firstField.StartBringIntoView();
-                    validationMessages[errors.Keys.First()].StartBringIntoView();
                 });
                 return;
             }
+            required.Validate();
             feedback.Text = "";
             try { await vm.StartAsync(); } catch (Exception ex) { feedback.Text = ex.Message; }
         };

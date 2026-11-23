@@ -50,6 +50,8 @@ public sealed class MainWindow : Window
     private readonly DashboardView dashboard;
     private readonly TabViewItem homeTab;
     private TabViewItem? settingsTab;
+    private TabView? settingsPages;
+    private static readonly System.Net.Http.HttpClient PluginHttp = PluginUpdateService.CreateHttpClient();
     private TabViewItem? pickerTab;
     private readonly ShellHeader header = new();
     private readonly NavigationViewItem home = new() { Content = "Dashboard", Icon = new SymbolIcon(Symbol.Home), Tag = "dashboard" };
@@ -200,6 +202,7 @@ public sealed class MainWindow : Window
             if (args.Tab == settingsTab)
             {
                 settingsTab = null;
+                settingsPages = null;
                 updatePanelResult = null;
                 updatePanel = null;
             }
@@ -403,6 +406,7 @@ public sealed class MainWindow : Window
     private void ShowUpdateSettings()
     {
         ShowSettings();
+        if (settingsPages is not null) settingsPages.SelectedIndex = 0;
         if (updatePanel is not { } panel) return;
         if (panel.IsLoaded) panel.StartBringIntoView();
         else
@@ -495,24 +499,28 @@ public sealed class MainWindow : Window
             Ui.Text("Reload the app to apply plugin and custom definition changes."),
             Ui.AsyncButton("Reload app", ReloadAppAsync, Report));
         var removeLocalData = ToolLayout.Section("Remove local data",
-            Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
+            Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, saved plugin update tokens, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
             Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report));
         var sections = ToolLayout.Columns(420,
             ToolLayout.Stack(
                 ToolLayout.Section("Appearance", theme),
                 ToolLayout.Section("Log Parser", autoScroll, autoFit, verboseChecks),
                 localFiles),
-            ToolLayout.Stack(CreatePluginPanel(), CreateUpdatePanel(), removeLocalData));
+            ToolLayout.Stack(CreateUpdatePanel(), removeLocalData));
         // Page scrolls its first child. Keep every settings section inside that one
         // adaptive surface so short windows can reach the bottom of the page.
         var settingsPage = ToolLayout.Page("Settings", "Preferences and local app management.", sections);
         settingsPage.MaxWidth = 1280;
+        settingsPages = new TabView { IsAddTabButtonVisible = false, TabWidthMode = TabViewWidthMode.SizeToContent };
+        settingsPages.TabItems.Add(new TabViewItem { Header = "General", IsClosable = false, Content = settingsPage });
+        settingsPages.TabItems.Add(new TabViewItem { Header = "Plugin manager", IsClosable = false,
+            Content = ToolLayout.Page("Plugin manager", "Manage installed plugins and download updates from their developers.", CreatePluginPanel()) });
         settingsTab = new TabViewItem
         {
             Header = "Settings",
             Tag = "settings",
             IsClosable = true,
-            Content = settingsPage
+            Content = settingsPages
         };
         tabs.TabItems.Add(settingsTab);
         tabs.SelectedItem = settingsTab;
@@ -523,7 +531,7 @@ public sealed class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = root.XamlRoot, Title = "Remove all ProtoBench local data?",
-            Content = "This permanently deletes settings, favorites, recent-file history, installed plugins, custom definitions and logs from:\n\n" +
+            Content = "This permanently deletes saved plugin update tokens from the Windows credential vault, and settings, favorites, recent-file history, installed plugins, custom definitions and logs from:\n\n" +
                 ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory +
                 "\n\nProtoBench will close and running operations will stop. Unsaved workspace inputs will be lost. The app stays installed. Saved files outside this folder are kept. This cannot be undone.",
             PrimaryButtonText = "Remove data and close", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
@@ -560,6 +568,30 @@ public sealed class MainWindow : Window
     {
         var installed = ToolLayout.Stack();
         var status = Ui.Text("");
+        var service = new PluginUpdateService(pluginPackages, PluginHttp, PluginUpdateCredentials.Read);
+        var releases = new Dictionary<string, PluginUpdateRelease>();
+        var messages = new Dictionary<string, string>();
+        var controls = ToolLayout.Stack();
+        var controlsHost = new ContentControl { Content = controls, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        async Task RunAsync(Func<Task> action)
+        {
+            controlsHost.IsEnabled = false;
+            try { await action(); }
+            catch (Exception ex) { status.Text = ex.Message; }
+            finally { controlsHost.IsEnabled = true; }
+        }
+        async Task CheckAsync(InstalledPlugin item)
+        {
+            var id = item.Manifest!.Id;
+            releases.Remove(id);
+            try
+            {
+                var release = await service.CheckAsync(item);
+                if (release is not null) releases[id] = release;
+                messages[id] = release is null ? "Up to date (including any pending update)." : $"Version {release.Version} is available.";
+            }
+            catch (Exception ex) { messages[id] = $"Update check failed: {ex.Message}"; }
+        }
         void Refresh()
         {
             installed.Children.Clear();
@@ -579,13 +611,81 @@ public sealed class MainWindow : Window
                     try { pluginPackages.SetEnabled(manifest.Id, enabled.IsChecked == true); status.Text = "Plugin setting saved. Restart the app to apply it."; }
                     catch (Exception ex) { enabled.IsChecked = item.Enabled; Report(ex); }
                 };
-                installed.Children.Add(ToolLayout.Stack(enabled, Ui.Text(state, 12)));
+                var row = ToolLayout.Stack(enabled, Ui.Text(manifest.Id, 12), Ui.Text(state, 12));
+                if (manifest.UpdateUrl is null)
+                    row.Children.Add(Ui.Text("Online updates are not supported by this plugin. Import a newer package to update it.", 12));
+                else
+                {
+                    row.Children.Add(Ui.Text($"Update source: {new Uri(manifest.UpdateUrl).Host}", 12));
+                    var source = new Uri(manifest.UpdateUrl);
+                    var token = new PasswordBox { Header = "GitLab access token", MaxLength = 4096,
+                        PlaceholderText = "Enter a token to add or replace it", PasswordRevealMode = PasswordRevealMode.Hidden };
+                    token.Unloaded += (_, _) => token.Password = "";
+                    var tokenStatus = Ui.Text("", 12);
+                    row.Children.Add(new Expander { Header = "Private GitLab access", HorizontalAlignment = HorizontalAlignment.Stretch,
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Content = ToolLayout.Stack(
+                            Ui.Text($"For a private GitLab project, save an access token for {source.GetLeftPart(UriPartial.Authority)}. Tokens are kept in the Windows credential vault, separately for each plugin and server. Use GitLab API URLs for the feed and package.", 12),
+                            token,
+                            Ui.Row(Ui.Button("Save token", () =>
+                            {
+                                try
+                                {
+                                    PluginUpdateCredentials.Save(manifest.Id, source, token.Password);
+                                    token.Password = "";
+                                    tokenStatus.Text = "Token saved. Check for updates to verify access.";
+                                }
+                                catch { tokenStatus.Text = "Could not save the token. Enter a valid token and try again."; }
+                            }), Ui.Button("Remove token", () =>
+                            {
+                                try
+                                {
+                                    PluginUpdateCredentials.Remove(manifest.Id, source);
+                                    token.Password = "";
+                                    tokenStatus.Text = "Saved token removed.";
+                                }
+                                catch { tokenStatus.Text = "Could not remove the saved token. Try again."; }
+                            })), tokenStatus) });
+                    row.Children.Add(Ui.AsyncButton("Check for updates", () => RunAsync(async () =>
+                    {
+                        status.Text = $"Checking {manifest.Name}…";
+                        await CheckAsync(item);
+                        status.Text = "Update check finished.";
+                        Refresh();
+                    })));
+                    if (messages.TryGetValue(manifest.Id, out var message)) row.Children.Add(Ui.Text(message));
+                    if (releases.TryGetValue(manifest.Id, out var release))
+                    {
+                        row.Children.Add(Ui.Text(release.ReleaseNotes ?? ""));
+                        row.Children.Add(Ui.AsyncButton($"Download {release.Version}", () => RunAsync(async () =>
+                        {
+                            status.Text = $"Downloading {manifest.Name} {release.Version}…";
+                            await service.DownloadAsync(release);
+                            releases.Remove(manifest.Id);
+                            messages.Remove(manifest.Id);
+                            status.Text = "Plugin update downloaded and verified. Use Reload app to apply it.";
+                            Refresh();
+                        })));
+                    }
+                }
+                installed.Children.Add(ToolLayout.Section("", row));
             }
             if (installed.Children.Count == 0) installed.Children.Add(Ui.Text("No plugins installed. Import a developer's package to add custom tools or formats."));
         }
         Refresh();
-        return ToolLayout.Section("Plugins & custom tools", Ui.Text("Import a .nstplugin/.zip package, plugin.json, or a DLL beside its plugin.json. Changes take effect after restarting the app."),
-            Ui.AsyncButton("Import plugin…", async () =>
+        controls.Children.Add(Ui.AsyncButton("Check all for updates", () => RunAsync(async () =>
+        {
+            var supported = pluginPackages.Installed().Where(p => p.Manifest?.UpdateUrl is not null).ToArray();
+            if (supported.Length == 0) { status.Text = "No installed plugins support online updates."; return; }
+            foreach (var item in supported)
+            {
+                status.Text = $"Checking {item.Manifest!.Name}…";
+                await CheckAsync(item);
+            }
+            status.Text = "Update checks finished. See each plugin for results.";
+            Refresh();
+        })));
+        controls.Children.Add(Ui.AsyncButton("Import plugin…", () => RunAsync(async () =>
             {
                 var source = await files.OpenAsync();
                 if (source is null) return;
@@ -601,15 +701,21 @@ public sealed class MainWindow : Window
                 };
                 if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
                 await Task.Run(() => pluginPackages.Import(source));
+                releases.Remove(manifest.Id);
+                messages.Remove(manifest.Id);
                 status.Text = updating ? "Plugin update ready. Use Reload app to apply it." : "Plugin imported. Use Reload app to load its tools and formats.";
                 Refresh();
-            }, Report),
-            Ui.AsyncButton("Open plugins folder", async () =>
+            })));
+        controls.Children.Add(Ui.AsyncButton("Open plugins folder", async () =>
             {
                 Directory.CreateDirectory(pluginPackages.Root);
                 var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(pluginPackages.Root);
                 if (!await Windows.System.Launcher.LaunchFolderAsync(folder)) throw new IOException("Could not open plugins folder.");
-            }, Report), status, installed);
+            }, Report));
+        controls.Children.Add(installed);
+        controls.Children.Add(Ui.AsyncButton("Reload app", ReloadAppAsync, Report));
+        return ToolLayout.Section("Plugins & custom tools", Ui.Text("Import a .nstplugin/.zip package, plugin.json, or a DLL beside its plugin.json. Changes take effect after restarting the app."),
+            status, controlsHost);
     }
 
     private UIElement CreateUpdatePanel()

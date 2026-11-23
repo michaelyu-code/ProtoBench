@@ -15,6 +15,7 @@ public sealed partial class CalculatorViewFactory(string toolId) : IWorkspaceVie
     {
         var vm = (CalculatorWorkspace)workspace;
         if (vm.Kind == CalculatorKind.TripleDes) return CreateTripleDes(vm);
+        var required = new RequiredInputs(vm);
         ComboBox Select(string label, string property, object items)
         {
             var combo = new ComboBox { Header = label, ItemsSource = items, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -43,18 +44,21 @@ public sealed partial class CalculatorViewFactory(string toolId) : IWorkspaceVie
         var input = Ui.Input(vm, nameof(vm.Input), vm.InputLabel, vm.Kind != CalculatorKind.Bitwise);
         input.MaxLength = vm.Kind == CalculatorKind.Bitwise ? 128 : 65536;
         input.SetBinding(TextBox.HeaderProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.InputLabel)) });
+        required.Require(input, "Enter the first operand.", () => vm.Kind == CalculatorKind.Bitwise);
         inputs.Children.Add(input);
         if (vm.Kind == CalculatorKind.Bitwise)
         {
             var operand = Ui.Input(vm, nameof(vm.Operand), vm.OperandLabel);
             operand.MaxLength = 128;
             operand.SetBinding(TextBox.HeaderProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.OperandLabel)) });
+            required.Require(operand, "Enter the second operand or shift count.", () => vm.ShowOperand);
             void UpdateOperand() => operand.Visibility = vm.ShowOperand ? Visibility.Visible : Visibility.Collapsed;
             vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.ShowOperand)) UpdateOperand(); };
             UpdateOperand();
             inputs.Children.Add(operand);
         }
-        inputs.Children.Add(Ui.Row(Ui.Primary(new Button { Content = "Calculate", Command = vm.CalculateCommand }), new Button { Content = "Clear inputs", Command = vm.ClearCommand }));
+        inputs.Children.Add(Ui.Row(Ui.Primary(required.Guard(new Button { Content = "Calculate", Command = vm.CalculateCommand })),
+            Ui.Button("Clear inputs", () => { vm.ClearCommand.Execute(null); required.Clear(); })));
         inputs.Children.Add(Ui.BoundText(vm, nameof(vm.Error)));
         inputs.Children.Add(Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
         var output = new RawTextViewer { Header = "Result", MinHeight = 180, MaxHeight = 360, TextWrapping = TextWrapping.Wrap };

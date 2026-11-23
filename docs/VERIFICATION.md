@@ -1,5 +1,75 @@
 # Verification record
 
+## Version 2.0.14 release checks — 23 November 2026
+
+Bumped the package/file version to 2.0.14 while retaining SDK assembly identity 2.0.0.0. This revision includes Message Compare and Text Compare, required-input feedback, timed-key scheduling changes, the plugin manager with optional private GitLab updates, and distinct neutral tab styling. Updated the README's plugin-management path and update summary.
+
+The versioned desktop Debug build passed in a separate output directory with zero warnings/errors. All four regression projects passed: Utilities 329, Application 257, Parsing 56 and Generation 11 (653 passed total). The existing opt-in 2-GiB application test was skipped. `git diff --check` passed. Installer/portable release packaging and publication are handled by the tagged CI workflow and were not run locally.
+
+## Neutral tab colours — 23 November 2026
+
+Replaced blue tab fills and outlines with neutral graphite/grey in dark mode and soft grey/charcoal in light mode, including hover and pressed states. The two-DIP outlines and spacing remain, and high-contrast mode retains Windows system colours. The separate-output Debug desktop build passed with zero warnings/errors. The preview was launched, but live colour verification was interrupted by user activity in the window; alternate themes remain manual checks for this palette change.
+
+## Distinct tab outlines and spacing — 23 November 2026
+
+Added shared two-DIP tab borders, a two-DIP horizontal margin on each tab, stronger selected outlines and blue selected fills in dark/light themes. Inactive fills remain neutral and high-contrast resources use Windows system colours. A shared attached property places the tab overrides at each item's resource scope so WinUI's template state resources use them; the native tab template, close buttons and keyboard behavior are retained.
+
+The separate-output Debug desktop build passed with zero warnings/errors. Live checks verified visible outlines on outer Dashboard/Settings tabs and inner General/Plugin manager tabs, selected-tab changes, and switching between dark/default and light themes. The original Default theme preference was restored. Alternate DPI, high-contrast mode and tab overflow remain manual checks.
+
+## Private GitLab plugin updates — 23 November 2026
+
+Added per-plugin GitLab token entry, replacement and removal through Windows Credential Locker. Tokens are separate from manifests/settings and scoped to the plugin ID plus feed HTTPS origin. Checks and downloads use PRIVATE-TOKEN only for that origin. Redirects are explicit, limited to five hops and reject HTTP destinations; other HTTPS hosts receive no token. Access failures explain how to check the token and permissions. Removing all local data also removes ProtoBench's stored update credentials. Developer documentation includes private GitLab raw-file API feed/package examples and token scopes.
+
+The separate-output Debug desktop build passed with zero warnings/errors. The application suite passed 257 tests with the existing opt-in 2-GiB case skipped. Eleven new authentication cases cover authenticated checks/downloads, unchanged shared headers, other-host/port package destinations, same-origin/cross-origin redirects, HTTP redirect rejection, redirect limits and access-failure messages without token disclosure. Real GitLab access and Windows credential save/remove UI have not been exercised; no project URL or real token was supplied.
+
+## Plugin manager and online updates — 23 November 2026
+
+Settings now has General and Plugin manager tabs. The manager retains import, enable/disable, installed/session/pending version details and folder access, and adds per-plugin and bulk update checks, release notes, verified downloads and Reload app. Plugins opt in through an optional HTTPS `updateUrl`; unsupported plugins retain manual updates. Downloads validate feed compatibility, SHA-256, package identity/version and existing package safety rules before staging a replacement for startup.
+
+The separate-output Debug desktop build passed with zero warnings/errors. The application suite passed 246 tests with the existing opt-in 2-GiB case skipped. Twenty-three new updater cases cover successful staging and startup activation, disabled-state preservation, installed/pending version comparisons, manual-only plugins, invalid URLs/feed metadata, mismatched checksums/IDs/versions, traversal, size limits with and without a declared length, HTTP failures, cancellation and insecure redirect destinations. Live checks verified Settings tab navigation, the plugin manager layout, empty installation state and the Check all result when no plugin supports online updates. Real developer-hosted feeds, installed-plugin update controls, narrow layouts and alternate themes remain manual checks; network/package behavior was verified using deterministic HTTP test responses.
+
+## Required input highlighting — 23 November 2026
+
+Added shared required-input feedback to Bitwise Calculator, Base Converter numeric mode, payment tools, Message Compare, Log Parser paste/path actions, certificate inspection, fixed-width generator Fields/JSON editors, relay/server configuration, Timed Key Presser and standard plugin forms. Required headers show an asterisk before running. An attempted action marks all missing inputs with a critical border, inline description and accessible help, then focuses an invalid field. Editing values clears corrected errors; Clear resets validation. Conditional requirements follow the active mode. Existing 3DES field feedback is retained. Valid empty text operations and empty bitmap field-list encoding remain supported; file-picker actions and Stop bypass unrelated required inputs. Custom plugin views retain their own validation UI.
+
+The separate-output Debug desktop build passed with zero warnings/errors. Application and generator suites passed 234 tests with the existing opt-in 2-GiB case skipped. A generator test verifies required-input metadata against actual generation and optional-field behavior. Live checks verified missing ARQC key/data feedback, clearing a corrected data field, all three missing Message Compare inputs, resetting errors with Clear, and switching Bitmap from required decode input to optional field-list encoding followed by successful all-zero output. No listeners or scheduled key presses were started during UI verification. Individual plugin views, alternate DPI/themes and every conditional networking combination remain manual checks.
+
+## Tab boundary contrast — 23 November 2026
+
+Added shared TabView theme overrides for visible tab outlines, separators and the tab-strip baseline. Active tabs use a distinct blue-grey surface, with separate inactive, hover and pressed fills in dark and light themes. High-contrast mode retains system state colours with system-colour outlines. These resources cover workspace tabs and nested parser tabs. The separate-output Debug desktop build passed with zero warnings/errors; the new tab colours have not been interactively verified.
+
+## Shared theme border contrast — 23 November 2026
+
+Strengthened shared card/panel outlines, text-input borders and dropdown borders in dark and light themes using opaque neutral slate brushes. Hover outlines have additional contrast, focus accents are retained, and high-contrast mode uses Windows system colours. Dashboard card surfaces and borders now use theme resource expressions so they follow the selected theme. The separate-output Debug desktop build passed with zero warnings/errors. These theme adjustments have not been interactively verified.
+
+## Message Compare value-panel definition — 23 November 2026
+
+Message 1 and Message 2 subcards now have opaque contrasting surfaces, two-DIP outlines, more padding and a divider between the label and value. Dark mode uses a cool charcoal surface against the yellow/purple parent cards; light mode uses white, with explicit high-contrast resources. Difference text highlighting is retained. A separate-output Debug desktop build passed with zero warnings/errors; the normal output was locked by the running app and Visual Studio. This styling adjustment has not been interactively verified.
+
+## Message Compare result readability — 23 November 2026
+
+Replaced the dense comparison rows with separated cards, 16-DIP field headings and monospaced values, explicit 24-DIP value line height, bordered value panels and status badges. Changed cards use a yellow edge and missing-field cards a purple edge, with distinct light/dark/high-contrast resources. Red and green text highlights mark the differing span between the common prefix and suffix, preserving emoji and combining characters. Matching parent values stay unhighlighted when only decoded children differ. Parser diagnostics are available in a collapsed expander above the results.
+
+The final Debug desktop build passed with zero warnings/errors. Live checks verified the compiled template loads, matched values, the differences-only filter, missing-field styling, changed ICC data and text highlighting. The initial live check caught missing runtime XAML type metadata; moving the template into a compiled resource dictionary resolved it. Alternate DPI/theme combinations remain manual.
+
+## Parser message comparison — 23 November 2026
+
+Added Message Compare in Parsers with two paste boxes, an installed-spec picker, recursive field/subfield comparison, side-by-side values and a differences-only filter. Matching uses spec ID/name within each parent plus occurrence for repeated fields. Missing and empty values stay distinct; nested differences mark parent rows changed. Validation requires one complete parsed message per box; editing inputs or changing specs invalidates results. Parser diagnostics are shown above the comparison.
+
+The Debug desktop build passed with zero warnings/errors. The parser and application regression suites passed 279 tests with the existing opt-in 2-GiB test skipped. Twelve new tests cover field ordering and IDs, nested changes, repeats, missing/empty values, exact comparisons, selected-spec parsing, validation and edits during parsing. Live app checks opened Parsers → Message Compare, selected the installed synthetic record spec, compared a changed amount, filtered to the difference, and compared decoded ICC tag 9F02. The last check showed the changed parent 55 and child 55 / 9F02 with both values and parser warnings. Alternate DPI/themes and narrow-window interaction remain manual.
+
+## Timed Key Presser default and random timing — 23 November 2026
+
+Changed the default interval to 200 seconds. Added an unchecked Randomize time between key presses checkbox, locked with the other configuration while running. When enabled, a new random delay from 1 second up to the configured interval is chosen before every press, including the first. The selected key stays unchanged; late ticks still send at most once and schedule from the current time.
+
+Release application tests passed 217 cases with the existing opt-in large-file case skipped. Deterministic timing tests cover the default, resampling delays, unchanged key selection, configuration locking, late ticks and the one-second boundary. The Release desktop build passed with zero warnings/errors. The new checkbox has not been interactively verified.
+
+## Timed Key Presser held-key behavior — 23 November 2026
+
+Removed the held modifier/selected-key guard and skip result. Every due interval now attempts the selected key's down/up pair without querying held keys or changing modifier state. A physically held modifier can still affect how Windows interprets the key. Rejected or incomplete Windows input still stops the session and records the failure. Updated the UI help and README to match.
+
+Release application tests passed 214 cases with the existing opt-in large-file case skipped. The Release desktop build passed with zero warnings/errors. Native input while physically holding keys has not been interactively verified.
+
 ## Tagged workflow relay-test timing — 23 November 2026
 
 The v2.0.11 tagged run failed in `TcpRelayTests.AutoModeHandlesEmptyAndSilentClientsAndStopCancelsPeek`, before release packaging. Its shared 200 ms setup timeout expired while the CI runner was processing the empty client's half-close, producing `OperationCanceledException` instead of the EOF event asserted by the test. The same commit's main-branch build passed. All update/proxy application tests passed in the failed tagged run.

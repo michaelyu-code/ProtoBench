@@ -14,13 +14,22 @@ public sealed class TimedKeyPressViewFactory : IWorkspaceViewFactory
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (TimedKeyPressWorkspace)workspace;
+        var required = new RequiredInputs(vm);
         var key = new ComboBox { Header = "Key to press", ItemsSource = vm.Keys, DisplayMemberPath = "Name", HorizontalAlignment = HorizontalAlignment.Stretch };
         key.SetBinding(ComboBox.SelectedItemProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.SelectedKey)), Mode = BindingMode.TwoWay });
         var seconds = Ui.Input(vm, nameof(vm.IntervalSeconds), "Interval (seconds)");
         seconds.MaxLength = 16;
-        var configuration = new ContentControl { Content = ToolLayout.Columns(180, key, seconds), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        required.Require(key, "Select a key to press.");
+        required.Add(seconds, () => !double.TryParse(vm.IntervalSeconds, out var interval) || !double.IsFinite(interval) || interval is < 1 or > 86400
+            ? "Enter an interval from 1 to 86,400 seconds." : null);
+        var randomTiming = new CheckBox { Content = "Randomize time between key presses" };
+        randomTiming.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.RandomizeTiming)), Mode = BindingMode.TwoWay });
+        var inputs = new StackPanel { Spacing = 8 };
+        inputs.Children.Add(ToolLayout.Columns(180, key, seconds));
+        inputs.Children.Add(randomTiming);
+        var configuration = new ContentControl { Content = inputs, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         configuration.SetBinding(Control.IsEnabledProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.CanConfigure)) });
-        var toggle = Ui.Primary(Ui.Button("Start", vm.Toggle));
+        var toggle = Ui.Primary(Ui.Button("Start", () => { if (vm.IsRunning) vm.Toggle(); else required.Run(vm.Toggle); }));
         toggle.SetBinding(ContentControl.ContentProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.ToggleLabel)) });
         var activity = new RawTextViewer { CompactViewport = false, MinHeight = 0, MaxHeight = double.PositiveInfinity,
             VerticalAlignment = VerticalAlignment.Stretch, TextWrapping = TextWrapping.Wrap };
@@ -56,7 +65,7 @@ public sealed class TimedKeyPressViewFactory : IWorkspaceViewFactory
         };
         var schedule = new ScrollViewer
         {
-            Content = ToolLayout.Section("Schedule", configuration, Ui.Text("300 seconds = 5 minutes. First press occurs after one interval."),
+            Content = ToolLayout.Section("Schedule", configuration, Ui.Text("200 seconds = 3 minutes 20 seconds. Normally, the first press waits one full interval. With random timing, each press waits a new random delay from 1 second up to the interval entered. The selected key stays the same."),
                 toggle, Ui.BoundText(vm, nameof(vm.Error)), Ui.BoundText(vm, nameof(vm.Status))),
             HorizontalContentAlignment = HorizontalAlignment.Stretch, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
@@ -72,7 +81,7 @@ public sealed class TimedKeyPressViewFactory : IWorkspaceViewFactory
         activitySection.Child = activityLayout;
         var helpContent = new ScrollViewer
         {
-            Content = Ui.Text("Keys are sent to whichever app is in focus. Choose that app after starting. Windows supports F1–F24; F25 is not available. Inputs are locked while running. Switching tabs or minimizing ProtoBench keeps the schedule active; Stop, closing this tab or exiting the app stops it. Timing is approximate and pauses if Windows suspends the app; missed presses are not replayed. A held modifier or selected key skips that interval. Elevated apps may reject presses. The latest 1,000 log entries stay in this tab and are not saved."),
+            Content = Ui.Text("Keys are sent to whichever app is in focus. Choose that app after starting. Windows supports F1–F24; F25 is not available. Inputs are locked while running. Switching tabs or minimizing ProtoBench keeps the schedule active; Stop, closing this tab or exiting the app stops it. Timing is approximate and pauses if Windows suspends the app; missed presses are not replayed. Each interval sends the selected key regardless of held keys, without changing modifier state. Elevated apps may reject presses. The latest 1,000 log entries stay in this tab and are not saved."),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
         var page = new Grid { Margin = new Thickness(12), RowSpacing = 8 };

@@ -130,6 +130,10 @@ public sealed partial class ParserView : UserControl
     public ParserView(ParserWorkspace vm, FileDialogService dialogs)
     {
         InitializeComponent();
+        var pasteRequired = new RequiredInputs(vm);
+        pasteRequired.Require(PasteInput, "Paste log text before parsing.", () => !vm.HasStagedPaste);
+        var pathRequired = new RequiredInputs(vm);
+        pathRequired.Require(PathInput, "Enter a local file path, or use Open file.");
         UpdateBrushes();
         presentation = (ParserResultPresentation)Resources["ResultPresentation"];
         autoFitEnabled = vm.AutoFitResults;
@@ -337,7 +341,7 @@ public sealed partial class ParserView : UserControl
             catch (Exception ex) { Status.Text = ex.Message; }
         };
         CancelButton.Click += (_, _) => vm.CancelWork();
-        ParseTextButton.Click += async (_, _) => await vm.ParseTextAsync(PasteInput.Text);
+        ParseTextButton.Click += async (_, _) => await pasteRequired.RunAsync(() => vm.ParseTextAsync(PasteInput.Text));
         ReparseFileButton.Click += async (_, _) => await vm.ReparseFileAsync();
         PasteInput.Paste += (_, args) =>
         {
@@ -363,14 +367,10 @@ public sealed partial class ParserView : UserControl
                 else PasteNotice.Text = vm.Status;
             });
         };
-        ClearTextButton.Click += (_, _) => { vm.ClearStagedPaste(); PasteInput.Text = ""; };
+        ClearTextButton.Click += (_, _) => { vm.ClearStagedPaste(); PasteInput.Text = ""; pasteRequired.Clear(); };
         ParsePathButton.Click += async (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(PathInput.Text))
-            {
-                Status.Text = "Enter a local file path.";
-                return;
-            }
+            if (!pathRequired.Validate()) return;
             await vm.OpenAsync(PathInput.Text.Trim().Trim('"'));
         };
         async Task ShowSelectedAsync(LogRecordSummary? summary, bool bringIntoView = true)

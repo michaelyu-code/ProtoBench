@@ -9,6 +9,7 @@ internal static class NavigationIcons
     // https://learn.microsoft.com/windows/apps/design/iconography/segoe-fluent-icons-font
     public const string BaseConverter = "\uE8B1"; // Shuffle
     public const string LogParser = "\uE721"; // Search
+    public const string MessageCompare = "\uE8AB"; // Switch
     public const string FileGenerator = "\uE710"; // Add
     public const string EmvDecoder = "\uE8EC"; // Tag
     public const string IsoBitmap = "\uE8A9"; // ViewAll
@@ -22,6 +23,7 @@ internal static class NavigationIcons
     public const string TelnetServer = "\uE756"; // CommandPrompt
     public const string TimedKeyPresser = "\uE765"; // KeyboardClassic
     public const string TextCleanup = "\uE894"; // Clear
+    public const string TextCompare = "\uE89F"; // TwoPage
 
     public static string Category(ToolCategory category) => category switch
     {

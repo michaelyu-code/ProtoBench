@@ -16,24 +16,28 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
     {
         var vm = (PluginToolWorkspace)workspace;
         if (plugin is ICustomToolViewProvider custom && custom.CreateView(tool.Id, vm.Session) is { } view) return view;
+        var required = new RequiredInputs(vm);
         var inputs = ToolLayout.Stack();
         var advanced = ToolLayout.Stack();
         var reset = new List<Action>();
         foreach (var definition in tool.Inputs)
         {
-            var target = definition.IsAdvanced ? advanced : inputs;
-            var label = definition.Label + (definition.Required ? " *" : "");
+            // A required advanced input must be visible before running the tool.
+            var target = definition.IsAdvanced && !definition.Required ? advanced : inputs;
+            var label = definition.Label;
             switch (definition.Kind)
             {
                 case ToolInputKind.Secret:
                     var secret = new PasswordBox { Header = label, Password = definition.DefaultValue, MaxLength = 1048576 };
                     secret.PasswordChanged += (_, _) => vm.SetInput(definition.Id, secret.Password);
+                    if (definition.Required) required.Require(secret, $"Enter {definition.Label}.");
                     reset.Add(() => secret.Password = definition.DefaultValue);
                     target.Children.Add(secret);
                     break;
                 case ToolInputKind.Choice:
                     var choice = new ComboBox { Header = label, ItemsSource = definition.Choices, SelectedItem = definition.DefaultValue, HorizontalAlignment = HorizontalAlignment.Stretch };
                     choice.SelectionChanged += (_, _) => vm.SetInput(definition.Id, (string?)choice.SelectedItem ?? "");
+                    if (definition.Required) required.Require(choice, $"Select {definition.Label}.");
                     reset.Add(() => choice.SelectedItem = definition.DefaultValue);
                     target.Children.Add(choice);
                     break;
@@ -45,11 +49,12 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
                         Value = int.TryParse(definition.DefaultValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var initial) ? initial : double.NaN
                     };
                     number.ValueChanged += (_, _) => vm.SetInput(definition.Id, double.IsNaN(number.Value) ? "" : number.Value.ToString(CultureInfo.InvariantCulture));
+                    if (definition.Required) required.Add(number, () => double.IsNaN(number.Value) ? $"Enter {definition.Label}." : null);
                     reset.Add(() => number.Value = int.TryParse(definition.DefaultValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : double.NaN);
                     target.Children.Add(number);
                     break;
                 case ToolInputKind.FieldValues:
-                    var fields = new PluginFieldValuesEditor(label, definition.DefaultValue, value => vm.SetInput(definition.Id, value));
+                    var fields = new PluginFieldValuesEditor(label, definition.DefaultValue, value => vm.SetInput(definition.Id, value), required, definition.Required);
                     reset.Add(() => fields.Reset(definition.DefaultValue));
                     target.Children.Add(fields);
                     break;
@@ -58,6 +63,7 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
                     var text = new TextBox { Header = label, Text = definition.DefaultValue, AcceptsReturn = multiline,
                         TextWrapping = TextWrapping.Wrap, MinHeight = multiline ? 100 : 32, MaxHeight = 280, MaxLength = 1048576 };
                     text.TextChanged += (_, _) => vm.SetInput(definition.Id, text.Text);
+                    if (definition.Required) required.Require(text, $"Enter {definition.Label}.");
                     reset.Add(() => text.Text = definition.DefaultValue);
                     target.Children.Add(text);
                     break;
@@ -69,8 +75,8 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
             Header = "Optional inputs", Content = advanced, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch
         });
-        var run = Ui.Primary(Ui.AsyncButton(tool.ActionLabel, vm.ExecuteAsync));
-        var clear = Ui.Button("Clear inputs", () => { if (vm.IsBusy) return; vm.Clear(); foreach (var action in reset) action(); });
+        var run = Ui.Primary(Ui.AsyncButton(tool.ActionLabel, () => required.RunAsync(vm.ExecuteAsync)));
+        var clear = Ui.Button("Clear inputs", () => { if (vm.IsBusy) return; vm.Clear(); foreach (var action in reset) action(); required.Clear(); });
         var cancel = Ui.Button("Cancel", vm.Cancel);
         var inputHost = new ContentControl { Content = inputs, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         var controls = ToolLayout.Stack(inputHost, Ui.Row(run, clear, cancel), Ui.Row(Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));

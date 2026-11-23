@@ -198,6 +198,14 @@ public static class ToolLayout
         VerticalContentAlignment = VerticalAlignment.Stretch
     };
 
+    /// <summary>Uses the available page height, leaving scrolling to the content's own editors.</summary>
+    public static Grid FittedPage(string title, string subtitle, FrameworkElement content, params UIElement[] footer)
+    {
+        var host = new WorkspaceGrid();
+        host.Children.Add(content);
+        return Page(title, subtitle, [host, .. footer]);
+    }
+
     public static Grid Page(string title, string subtitle, params UIElement[] children)
     {
         var page = new Grid { Margin = new Thickness(12), RowSpacing = 8 };

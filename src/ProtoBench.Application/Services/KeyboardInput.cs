@@ -20,9 +20,7 @@ public static class KeyboardKeys
         }).ToArray());
 }
 
-public enum KeyPressResult { Sent, HeldKeySkipped }
-
 public interface IKeyboardInput
 {
-    KeyPressResult Press(KeyboardKey key);
+    void Press(KeyboardKey key);
 }

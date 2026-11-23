@@ -5,6 +5,12 @@ namespace ProtoBench.Application.Tests;
 
 public sealed class TimedKeyPressWorkspaceTests
 {
+    private sealed class TimingRandom(params double[] samples) : Random
+    {
+        private readonly Queue<double> values = new(samples);
+        public override double NextDouble() => values.Dequeue();
+    }
+
     private sealed class Clock : TimeProvider
     {
         private long timestamp;
@@ -19,14 +25,55 @@ public sealed class TimedKeyPressWorkspaceTests
     private sealed class Keyboard : IKeyboardInput
     {
         public List<KeyboardKey> Pressed { get; } = [];
-        public KeyPressResult Result { get; set; } = KeyPressResult.Sent;
         public bool Fail { get; set; }
-        public KeyPressResult Press(KeyboardKey key)
+        public void Press(KeyboardKey key)
         {
             if (Fail) throw new InvalidOperationException("Input blocked");
-            if (Result == KeyPressResult.Sent) Pressed.Add(key);
-            return Result;
+            Pressed.Add(key);
         }
+    }
+
+    [Fact]
+    public void DefaultIntervalIs200SecondsAndRandomTimingIsOff()
+    {
+        var clock = new Clock(); var keyboard = new Keyboard();
+        using var vm = new TimedKeyPressWorkspace(keyboard, clock);
+        Assert.Equal("200", vm.IntervalSeconds);
+        Assert.False(vm.RandomizeTiming);
+        vm.Start(); clock.Advance(199); vm.Tick();
+        Assert.Empty(keyboard.Pressed);
+        clock.Advance(1); vm.Tick();
+        Assert.Single(keyboard.Pressed);
+    }
+
+    [Fact]
+    public void RandomTimingChoosesANewDelayForEachPressAndKeepsTheSelectedKey()
+    {
+        var clock = new Clock(); var keyboard = new Keyboard();
+        using var vm = new TimedKeyPressWorkspace(keyboard, clock, new TimingRandom(0, .5, .9, 0))
+            { IntervalSeconds = "9", RandomizeTiming = true };
+        vm.Start(); vm.RandomizeTiming = false;
+        Assert.True(vm.RandomizeTiming);
+        vm.Tick(); Assert.Empty(keyboard.Pressed);
+        clock.Advance(1); vm.Tick(); Assert.Single(keyboard.Pressed);
+        clock.Advance(4); vm.Tick(); Assert.Single(keyboard.Pressed);
+        clock.Advance(1); vm.Tick(); Assert.Equal(2, keyboard.Pressed.Count);
+        // A delayed timer sends once and starts a fresh delay, without catch-up.
+        clock.Advance(100); vm.Tick(); vm.Tick();
+        Assert.Equal(3, keyboard.Pressed.Count);
+        Assert.All(keyboard.Pressed, key => Assert.Equal("F24", key.Name));
+        vm.Stop(); vm.RandomizeTiming = false;
+        Assert.False(vm.RandomizeTiming);
+    }
+
+    [Fact]
+    public void RandomTimingWithOneSecondIntervalStillWaitsOneSecond()
+    {
+        var clock = new Clock(); var keyboard = new Keyboard();
+        using var vm = new TimedKeyPressWorkspace(keyboard, clock, new TimingRandom(.9, 0))
+            { IntervalSeconds = "1", RandomizeTiming = true };
+        vm.Start(); clock.Advance(.9); vm.Tick(); Assert.Empty(keyboard.Pressed);
+        clock.Advance(.1); vm.Tick(); Assert.Single(keyboard.Pressed);
     }
 
     [Fact]
@@ -90,17 +137,6 @@ public sealed class TimedKeyPressWorkspaceTests
         Assert.Single(keyboard.Pressed);
         clock.Advance(4); vm.Tick(); Assert.Single(keyboard.Pressed);
         clock.Advance(1); vm.Tick(); Assert.Equal(2, keyboard.Pressed.Count);
-    }
-
-    [Fact]
-    public void HeldKeysAreLoggedAsSkippedRatherThanSuccessfulPresses()
-    {
-        var clock = new Clock(); var keyboard = new Keyboard { Result = KeyPressResult.HeldKeySkipped };
-        using var vm = new TimedKeyPressWorkspace(keyboard, clock) { IntervalSeconds = "1" };
-        vm.Start(); clock.Advance(1); vm.Tick();
-        Assert.Equal(0, vm.PressCount); Assert.Contains("Skipped F24", vm.Activity); Assert.True(vm.IsRunning);
-        keyboard.Result = KeyPressResult.Sent; clock.Advance(1); vm.Tick();
-        Assert.Equal(1, vm.PressCount);
     }
 
     [Fact]
