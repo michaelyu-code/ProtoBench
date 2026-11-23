@@ -36,4 +36,17 @@ internal static class Iso8583Ebcdic
         for (var i = 0; i < data.Length; i++) chars[i] = Ibm1047[data[i]];
         return new(chars);
     }
+
+    public static byte[] Encode(string text, Iso8583EbcdicEncoding encoding)
+    {
+        if (encoding == Iso8583EbcdicEncoding.Cp500) return Cp500.GetBytes(text);
+        var bytes = new byte[text.Length];
+        for (var i = 0; i < text.Length; i++)
+        {
+            var index = Ibm1047.IndexOf(text[i]);
+            if (index < 0) throw new FormatException($"IBM1047 cannot represent character at position {i + 1}.");
+            bytes[i] = (byte)index;
+        }
+        return bytes;
+    }
 }

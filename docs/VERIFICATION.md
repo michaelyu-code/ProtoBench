@@ -1,5 +1,23 @@
 # Verification record
 
+## Version 2.0.16 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.16 while retaining SDK assembly identity 2.0.0.0. Includes the ISO 8583 message builder, text/hex field input, automatic bitmap/prefix generation, EBCDIC encoding, accordion field editors and fitted hex/ASCII previews.
+
+The full Release suite passed 777 tests: Utilities 329, Parsing 161, Application 276 and Generation 11. The existing opt-in large-file test was skipped. The Windows Release build to `artifacts/releasebuildercheck` passed with zero warnings/errors. SDK-only developer-kit verification built and packaged all three standalone sample plugins and includes the builder API source. `git diff --check` passed. Live accordion, editing, packed preview and maximized layout checks are recorded below. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
+## ISO builder accordion and fitted previews — 24 November 2026
+
+Replaced the field cards with native expanders that start collapsed, show a short live value/format summary, and open one editor at a time. Existing editor controls and expansion state survive adding/removing other fields. Replaced bounded preview editors in a stack with equal flexible grid rows inside a fitted result pane; compact viewport sizing is disabled so both editors use the available height. Minimum editor heights preserve a usable scrollable layout in short windows, and the optional packed-field list has a bounded viewport.
+
+The desktop build to `artifacts/isobuilderaccordion` passed with zero warnings/errors. Live checks loaded the ASCII sample, observed MTI and newly added field 2 collapsed, opened field 2, entered `12345`, opened MTI and verified field 2 closed while retaining its header value. Build preview then produced the complete 27-byte ASCII message `020040000000000000000512345` with hex and ASCII outputs. Both previews filled the available pane in the restored window and grew substantially after maximizing. This completes the previously interrupted basic builder-preview UI check. Alternate themes, very small windows and clipboard actions remain manual. No packing or workspace logic changed in this layout update.
+
+## ISO 8583 message builder — 24 November 2026
+
+Added Generators → ISO 8583 Message Builder using the same startup-loaded jPOS XML profiles and optional tab-local XML load as the parser. Fields accept logical ASCII text or encoded hex value bytes without a prefix. The engine generates primary/secondary/tertiary bitmaps, prefixes and fixed-text padding, applies IBM1047/CP500 only to EBCDIC codecs, validates header/field sizes and values, then parses the message back before exposing its hex/escaped-ASCII preview. Variable BCD hex has an explicit digit-count option for odd lengths. Editing, changing profile, removing fields or clearing invalidates the preview. Copy ASCII is restricted to fully printable ASCII messages; binary/EBCDIC output remains available as lossless hex. No framing or MAC calculation is added.
+
+The desktop build to `artifacts/isobuildercheck` passed with zero warnings/errors. Parsing tests passed 161 cases, including 34 new builder cases for known packed bytes, prefixes, mixed text/hex, fixed padding, signed amounts, BCD/F/hex encodings, CP500, binary fields, headers, secondary/tertiary bitmaps, field order, malformed values, duplicate/unknown fields, capacity limits and cancellation. Application tests passed 276 cases with one opt-in large-file test skipped; five new cases cover add/remove, profile/reset behavior, error feedback, digit counts, mode changes and preview invalidation. The live UI check opened the tool, loaded the ASCII sample XML, added field 2 and entered `12345`; repeated user-input detections prevented completing the Build preview click. End-to-end preview/copy interaction and alternate window/theme checks remain manual. `git diff --check` passed.
+
 ## Version 2.0.15 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.15 while retaining SDK assembly identity 2.0.0.0. Includes the raw ISO 8583 parser and results tree, jPOS XML/user-folder/plugin profiles, IBM1047/CP500 compatibility, Message Compare request/reply pairs and expanding inputs, and Text Compare line numbers and wrapping.
