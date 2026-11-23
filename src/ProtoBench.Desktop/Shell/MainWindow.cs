@@ -133,7 +133,7 @@ public sealed class MainWindow : Window
                 Tag = category.Key,
                 Icon = new FontIcon { Glyph = NavigationIcons.Category(category.Key) },
                 SelectsOnInvoked = true,
-                IsExpanded = vm.Tools.Tools.Count <= 8
+                IsExpanded = vm.Tools.Tools.Count <= 8 && categoryItems.Count == 0
             };
             ToolTipService.SetToolTip(group, $"{category.Key.DisplayName()} · {category.Count()} tools");
             foreach (var tool in category.OrderBy(t => t.Name))
@@ -143,6 +143,12 @@ public sealed class MainWindow : Window
                 group.MenuItems.Add(item);
             }
             categoryItems.Add(category.Key, group);
+            group.RegisterPropertyChangedCallback(NavigationViewItem.IsExpandedProperty, (_, _) =>
+            {
+                if (!group.IsExpanded) return;
+                foreach (var other in categoryItems.Values)
+                    if (!ReferenceEquals(other, group)) other.IsExpanded = false;
+            });
             var compact = new NavigationViewItem
             {
                 Content = group.Content, Tag = category.Key,

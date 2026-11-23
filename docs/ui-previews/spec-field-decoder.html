@@ -1,0 +1,96 @@
+<div id="decoder-preview" aria-label="Spec field decoder design">
+<style>
+#decoder-preview{font:14px/1.5 'Segoe UI',sans-serif;color:light-dark(#202124,#eee);--dc-bg:light-dark(#fafafa,#202020);--dc-panel:light-dark(#fff,#292929);--dc-line:light-dark(#dedede,#454545);--dc-muted:light-dark(#60646b,#b5b7bc);--dc-accent:light-dark(#005fb8,#75bcff);--dc-soft:light-dark(#eaf3fc,#20374a);--dc-warn:light-dark(#845500,#ffd17e)}
+#decoder-preview *{box-sizing:border-box}
+#decoder-preview .dc-window{background:var(--dc-bg);border:1px solid var(--dc-line);border-radius:9px;overflow:hidden}
+#decoder-preview .dc-bar{padding:12px 20px;border-bottom:1px solid var(--dc-line);color:var(--dc-muted);display:flex;gap:10px;align-items:center}
+#decoder-preview .dc-content{padding:24px;display:grid;gap:20px}
+#decoder-preview h2{font-size:24px;font-weight:600;margin:0}
+#decoder-preview h3{font-size:18px;font-weight:600;margin:0}
+#decoder-preview h4{font-size:14px;font-weight:600;margin:0}
+#decoder-preview p{margin:0}
+#decoder-preview .dc-muted{color:var(--dc-muted);font-size:12px}
+#decoder-preview .dc-layout{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.4fr);gap:24px;align-items:start}
+#decoder-preview form{display:grid;gap:16px}
+#decoder-preview label{display:grid;gap:6px;font-size:12px;min-width:0}
+#decoder-preview input,#decoder-preview select,#decoder-preview button{font:inherit;color:inherit;min-width:0}
+#decoder-preview input,#decoder-preview select{width:100%;padding:8px 10px;border:1px solid var(--dc-line);border-radius:4px;background:var(--dc-panel)}
+#decoder-preview .dc-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#decoder-preview .dc-button{cursor:pointer;padding:8px 12px;border:1px solid var(--dc-line);border-radius:4px;background:var(--dc-panel)}
+#decoder-preview .dc-primary{background:var(--dc-accent);color:light-dark(#fff,#101b25);border-color:transparent}
+#decoder-preview .dc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#decoder-preview details{font-size:12px}
+#decoder-preview summary{cursor:pointer}
+#decoder-preview .dc-context{display:grid;gap:10px;margin-top:12px}
+#decoder-preview .dc-context-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
+#decoder-preview .dc-result{background:var(--dc-panel);border:1px solid var(--dc-line);border-radius:6px;padding:22px;display:grid;gap:18px;min-width:0}
+#decoder-preview .dc-result-header{display:flex;gap:10px;justify-content:space-between;align-items:start;flex-wrap:wrap}
+#decoder-preview .dc-status{color:var(--dc-accent);font-size:12px}
+#decoder-preview .dc-summary{padding:14px 16px;background:var(--dc-soft);border-radius:4px;display:grid;gap:6px}
+#decoder-preview .dc-data{font-family:'Cascadia Mono',Consolas,monospace;font-size:20px;letter-spacing:3px}
+#decoder-preview table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed}
+#decoder-preview th,#decoder-preview td{text-align:left;padding:10px 5px;border-bottom:1px solid var(--dc-line);overflow-wrap:anywhere;vertical-align:top}
+#decoder-preview th{font-weight:600;color:var(--dc-muted);font-size:12px}
+#decoder-preview th:nth-child(1){width:40%}
+#decoder-preview th:nth-child(2){width:18%}
+#decoder-preview .dc-reference{display:grid;gap:8px}
+#decoder-preview blockquote{margin:8px 0 0;padding-left:12px;border-left:2px solid var(--dc-line);color:var(--dc-muted)}
+#decoder-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;margin:12px 0 0}
+#decoder-preview .dc-alert{color:var(--dc-warn);font-size:12px}
+#decoder-preview .dc-source{display:grid;gap:4px}
+@media(max-width:650px){#decoder-preview .dc-layout{grid-template-columns:1fr}#decoder-preview .dc-content{padding:16px}#decoder-preview .dc-result{padding:16px}}
+</style>
+<div class="dc-window">
+ <div class="dc-bar"><i data-lucide="scan-text" aria-hidden="true"></i>ProtoBench <span aria-hidden="true">/</span> Spec field decoder</div>
+ <div class="dc-content">
+  <div><h2>Decode a field</h2><p class="dc-muted">Illustrative specification and mappings</p></div>
+  <div class="dc-layout">
+   <form>
+    <label>Specification<select name="spec"><option>Payments host · v2.4 (example)</option></select></label>
+    <div class="dc-pair">
+     <label>Field<select name="field"><option>DE22 · POS entry mode</option><option>DE39 · Response code</option></select></label>
+     <label>Message type<input name="mti" value="0200" placeholder="e.g. 0200"></label>
+    </div>
+    <label>Field value<input name="value" value="051" autocomplete="off" spellcheck="false"><span class="dc-format dc-muted">Expected format: 3 numeric digits</span></label>
+    <details class="dc-other"><summary>Other fields · optional</summary><div class="dc-context"><p class="dc-muted">Supporting values used when a decoding rule depends on another field.</p><div class="dc-context-rows"></div><div><button class="dc-button dc-add" type="button">+ Add field</button></div></div></details>
+    <div class="dc-actions"><button class="dc-button dc-primary" type="submit">Decode</button><button class="dc-button dc-clear" type="button">Clear inputs</button></div>
+    <p class="dc-alert dc-input-error" role="alert"></p>
+   </form>
+   <section class="dc-result" aria-label="Decoded result" aria-live="polite"></section>
+  </div>
+ </div>
+</div>
+<script>
+(()=>{
+ const root=document.getElementById('decoder-preview'),form=root.querySelector('form'),result=root.querySelector('.dc-result');
+ let decoded=null;
+ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function persist(){window.openai?.setWidgetState?.({modelContent:{design:'Structured field decoder',field:form.elements.field.value},privateContent:{field:form.elements.field.selectedIndex,mti:form.elements.mti.value,value:form.elements.value.value,decoded}})?.catch(()=>{});}
+ function format(){root.querySelector('.dc-format').textContent=form.elements.field.selectedIndex===0?'Expected format: 3 numeric digits':'Expected format: 2 numeric digits';}
+ function render(){
+  if(!decoded){result.innerHTML='<h3>Decoded result</h3><p class="dc-muted">Enter a field value and select Decode.</p>';return;}
+  const {field,value,mti}=decoded,entry=field===0;
+  const mappings=entry?[{component:'Card entry method',position:'Digits 1–2',raw:value.slice(0,2),meaning:({'05':'Chip read','07':'Contactless chip read'})[value.slice(0,2)]||'Unmapped value'},{component:'PIN capability',position:'Digit 3',raw:value.slice(2),meaning:({'1':'PIN entry supported','2':'PIN entry not supported'})[value.slice(2)]||'Unmapped value'}]:[{component:'Transaction outcome',position:'Entire field',raw:value,meaning:({'00':'Approved','05':'Declined','12':'Invalid transaction'})[value]||'Unmapped value'}];
+  const complete=mappings.every(r=>r.meaning!=='Unmapped value'),title=entry?'DE22 · POS entry mode':'DE39 · Response code';
+  result.innerHTML='<div class="dc-result-header"><h3>'+title+'</h3><span class="dc-status">'+(complete?'Decoded':'Partially decoded')+'</span></div><div class="dc-summary"><span class="dc-data">'+esc(value)+'</span><p>'+mappings.map(r=>esc(r.meaning)).join(' · ')+'</p></div><table><thead><tr><th>Component</th><th>Value</th><th>Meaning</th></tr></thead><tbody>'+mappings.map(r=>'<tr><td>'+r.component+'<div class="dc-muted">'+r.position+'</div></td><td><code>'+r.raw+'</code></td><td>'+r.meaning+'</td></tr>').join('')+'</tbody></table>'+(!complete?'<p class="dc-alert">Some values have no mapping in this example. Their raw values are preserved above.</p>':'')+'<div class="dc-source"><h4>Context used</h4><p class="dc-muted">Payments host v2.4 · MTI '+esc(mti)+'</p><p class="dc-muted">No supporting fields required by this example rule.</p></div><details class="dc-reference" open><summary>Specification reference</summary><div class="dc-source"><p>'+ (entry?'§ 6.8 · POS entry mode · Page 71':'§ 6.12 · Response code · Page 84')+'</p><blockquote>'+(entry?'The first two digits identify the card entry method. The third digit identifies PIN entry capability.':'The response code identifies the outcome of the transaction.')+'</blockquote></div></details><div class="dc-actions"><button class="dc-button dc-copy" type="button">Copy decoded result</button><span class="dc-muted dc-copied" role="status"></span></div><details><summary>Raw output</summary><pre></pre></details>';
+  const raw=title+'\nValue: '+value+'\nMTI: '+mti+'\n'+mappings.map(r=>r.component+' ['+r.raw+']: '+r.meaning).join('\n');result.querySelector('pre').textContent=raw;
+  result.querySelector('.dc-copy').onclick=async()=>{try{await navigator.clipboard.writeText(raw);result.querySelector('.dc-copied').textContent='Copied';}catch{result.querySelector('.dc-copied').textContent='Expand raw output to select and copy.';}};
+ }
+ function decode(){
+  const field=form.elements.field.selectedIndex,value=form.elements.value.value.trim(),mti=form.elements.mti.value.trim(),length=field===0?3:2;
+  const error=root.querySelector('.dc-input-error');
+  if(!new RegExp('^\\d{'+length+'}$').test(value)){error.textContent='Enter exactly '+length+' numeric digits for this field.';decoded=null;render();return;}
+  if(!/^\d{4}$/.test(mti)){error.textContent='Enter a four-digit message type.';decoded=null;render();return;}
+  error.textContent='';decoded={field,value,mti};render();persist();
+ }
+ form.onsubmit=e=>{e.preventDefault();decode();};
+ form.addEventListener('input',()=>{if(decoded){result.innerHTML='<h3>Inputs changed</h3><p class="dc-muted">Select Decode to update the result.</p>';}});
+ form.elements.field.onchange=()=>{format();decoded=null;render();};
+ root.querySelector('.dc-clear').onclick=()=>{form.elements.value.value='';form.elements.mti.value='';root.querySelector('.dc-context-rows').innerHTML='';decoded=null;root.querySelector('.dc-input-error').textContent='';render();persist();};
+ root.querySelector('.dc-add').onclick=()=>{const row=document.createElement('div');row.className='dc-context-row';row.innerHTML='<label>Field<input placeholder="e.g. DE3" aria-label="Supporting field"></label><label>Value<input placeholder="000000" aria-label="Supporting value"></label><button type="button" class="dc-button" aria-label="Remove supporting field">×</button>';row.querySelector('button').onclick=()=>row.remove();root.querySelector('.dc-context-rows').append(row);};
+ function restore(s){if(s&&typeof s.value==='string'){form.elements.field.selectedIndex=s.field===1?1:0;form.elements.mti.value=s.mti||'';form.elements.value.value=s.value;decoded=s.decoded||null;}else{decoded={field:0,value:'051',mti:'0200'};}format();render();}
+ restore(window.openai?.widgetState?.privateContent);
+ window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.privateContent;if(s)restore(s);});
+ if(globalThis.Tweak){const design={reference:true};const tweak=new Tweak({container:root,onChange:()=>{const ref=result.querySelector('.dc-reference');if(ref)ref.open=design.reference;}});tweak.addToggle(design,'reference',{label:'Expand spec reference'});}
+})();
+</script>

@@ -1,0 +1,89 @@
+<div id="spec-search-preview" aria-label="Spec search design">
+  <style>
+    #spec-search-preview{font:14px/1.5 'Segoe UI',sans-serif;color:light-dark(#202124,#eee);--ss-bg:light-dark(#fafafa,#202020);--ss-panel:light-dark(#fff,#292929);--ss-line:light-dark(#dedede,#454545);--ss-muted:light-dark(#60646b,#b5b7bc);--ss-accent:light-dark(#005fb8,#75bcff);--ss-select:light-dark(#eaf3fc,#20374a);--ss-mark:light-dark(#fff0a8,#625215)}
+    #spec-search-preview *{box-sizing:border-box}
+    #spec-search-preview .ss-window{background:var(--ss-bg);border:1px solid var(--ss-line);border-radius:9px;overflow:hidden}
+    #spec-search-preview .ss-titlebar{padding:12px 20px;border-bottom:1px solid var(--ss-line);color:var(--ss-muted);display:flex;gap:10px;align-items:center}
+    #spec-search-preview .ss-content{padding:24px;display:grid;gap:20px}
+    #spec-search-preview h2{font-size:24px;font-weight:600;margin:0}
+    #spec-search-preview h3{font-size:18px;font-weight:600;margin:0}
+    #spec-search-preview p{margin:0}
+    #spec-search-preview .ss-muted{color:var(--ss-muted);font-size:12px}
+    #spec-search-preview form{display:grid;grid-template-columns:1.3fr 1.6fr 100px auto;gap:12px;align-items:end}
+    #spec-search-preview label{display:grid;gap:6px;font-size:12px}
+    #spec-search-preview input,#spec-search-preview select,#spec-search-preview button{font:inherit;color:inherit}
+    #spec-search-preview input,#spec-search-preview select{width:100%;min-width:0;padding:8px 10px;border:1px solid var(--ss-line);border-radius:4px;background:var(--ss-panel)}
+    #spec-search-preview button{cursor:pointer}
+    #spec-search-preview .ss-action{padding:8px 14px;border:1px solid var(--ss-line);border-radius:4px;background:var(--ss-panel)}
+    #spec-search-preview .ss-primary{background:var(--ss-accent);color:light-dark(#fff,#101b25);border-color:transparent}
+    #spec-search-preview .ss-status{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+    #spec-search-preview .ss-workspace{display:grid;grid-template-columns:minmax(0, .9fr) minmax(0,1.3fr);border:1px solid var(--ss-line);border-radius:6px;background:var(--ss-panel)}
+    #spec-search-preview .ss-list{padding:8px;border-right:1px solid var(--ss-line);display:flex;flex-direction:column;gap:4px}
+    #spec-search-preview .ss-hit{text-align:left;display:grid;gap:8px;width:100%;background:transparent;border:0;border-left:3px solid transparent;padding:16px 12px;border-radius:3px}
+    #spec-search-preview .ss-hit[aria-pressed=true]{background:var(--ss-select);border-left-color:var(--ss-accent)}
+    #spec-search-preview .ss-hit:hover{background:var(--ss-select)}
+    #spec-search-preview .ss-hit strong{font-weight:600}
+    #spec-search-preview .ss-preview{padding:24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+    #spec-search-preview .ss-passage{display:grid;gap:14px;line-height:1.7}
+    #spec-search-preview mark{background:var(--ss-mark);color:inherit;padding:0 2px}
+    #spec-search-preview .ss-actions{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+    #spec-search-preview details{font-size:12px;color:var(--ss-muted)}
+    #spec-search-preview summary{cursor:pointer}
+    #spec-search-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+    #spec-search-preview table{border-collapse:collapse;width:100%;font-size:13px}
+    #spec-search-preview td,#spec-search-preview th{text-align:left;border-bottom:1px solid var(--ss-line);padding:9px 6px}
+    #spec-search-preview th{font-weight:600}
+    #spec-search-preview .ss-empty{padding:24px;color:var(--ss-muted)}
+    #spec-search-preview.ss-compact .ss-hit{padding:10px 12px;gap:4px}
+    @media(max-width:650px){#spec-search-preview form{grid-template-columns:1fr 100px}#spec-search-preview label:first-child{grid-column:1/-1}#spec-search-preview label:nth-child(2){grid-column:1/-1}#spec-search-preview .ss-workspace{grid-template-columns:1fr}#spec-search-preview .ss-list{border-right:0;border-bottom:1px solid var(--ss-line)}#spec-search-preview .ss-content{padding:16px}#spec-search-preview .ss-preview{padding:18px}}
+  </style>
+  <div class="ss-window">
+    <div class="ss-titlebar"><i data-lucide="book-open" aria-hidden="true"></i>ProtoBench <span aria-hidden="true">/</span> Spec search</div>
+    <div class="ss-content">
+      <div><h2>Search specifications</h2><p class="ss-muted">Illustrative content · Payments host specification</p></div>
+      <form>
+        <label>Specification<select aria-label="Specification"><option>Payments host · v2.4</option><option>All example specifications</option></select></label>
+        <label>Search terms<input name="query" value="response code" placeholder="Field name, keyword or phrase"></label>
+        <label>Max results<input name="limit" type="number" min="1" max="100" value="10"></label>
+        <button class="ss-action ss-primary" type="submit">Search</button>
+      </form>
+      <div class="ss-status"><span class="ss-count" aria-live="polite">3 results for “response code”</span><span class="ss-muted">Sorted by relevance</span></div>
+      <div class="ss-workspace">
+        <div class="ss-list" aria-label="Search results"></div>
+        <section class="ss-preview" aria-label="Selected passage" aria-live="polite"></section>
+      </div>
+      <details class="ss-raw"><summary>Raw output</summary><pre></pre></details>
+    </div>
+  </div>
+</div>
+<script>
+(()=>{
+  const root=document.getElementById('spec-search-preview');
+  const examples=[
+    {title:'DE39 · Response code',location:'§ 6.12 · Page 84',snippet:'The response code indicates the outcome of the transaction. A value of 00 indicates approval.',paragraphs:['The response code indicates the outcome of the transaction. The host returns this field in the response message.','The following values are defined for this example specification.'],rows:[['00','Approved'],['05','Declined'],['12','Invalid transaction']],score:'12.84'},
+    {title:'Authorisation response',location:'§ 4.3 · Page 32',snippet:'An authorisation response contains the response code and, when approved, the authorisation identifier.',paragraphs:['An authorisation response contains the response code and, when approved, the authorisation identifier.','The terminal uses the response code to determine the transaction outcome before completing the customer interaction.'],score:'9.26'},
+    {title:'Reversal handling',location:'§ 8.2 · Page 116',snippet:'When the original response code is unavailable, the reversal identifies the original request using its reference fields.',paragraphs:['When the original response code is unavailable, the reversal identifies the original request using its reference fields.','A reversal response confirms processing of the reversal. It should be interpreted in the context of the original transaction.'],score:'6.51'}
+  ];
+  const form=root.querySelector('form'), list=root.querySelector('.ss-list'),preview=root.querySelector('.ss-preview');
+  const saved=window.openai?.widgetState?.privateContent;
+  let query=typeof saved?.query==='string'?saved.query:'response code', selected=Number.isInteger(saved?.selected)?saved.selected:0;
+  let results=examples;
+  const esc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function highlight(s){let out=esc(s); const terms=query.trim().split(/\s+/).filter(Boolean); for(const term of [...new Set(terms)]){const safe=esc(term).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');out=out.replace(new RegExp(safe,'gi'),m=>'<mark>'+m+'</mark>')}return out;}
+  function persist(){window.openai?.setWidgetState?.({modelContent:{design:'Search list with passage preview',selectedPassage:results[selected]?.title,query},privateContent:{query,selected}})?.catch(()=>{});}
+  function render(){
+    root.querySelector('.ss-count').textContent=results.length+' results'+(query?' for “'+query+'”':'');
+    list.innerHTML=results.map((r,i)=>'<button type="button" class="ss-hit" aria-pressed="'+(i===selected)+'"><strong>'+esc(r.title)+'</strong><span class="ss-muted">'+esc(r.location)+'</span><span>'+highlight(r.snippet)+'</span></button>').join('')||'<div class="ss-empty">No matching passages.</div>';
+    list.querySelectorAll('button').forEach((b,i)=>b.onclick=()=>{selected=i;render();persist()});
+    const r=results[selected];
+    if(!r){preview.innerHTML='<h3>No results</h3><p>Try a field number, a shorter phrase or another keyword.</p>';return;}
+    preview.innerHTML='<div class="ss-muted">Payments host · v2.4 &nbsp; / &nbsp; '+esc(r.location)+'</div><h3>'+esc(r.title)+'</h3><div class="ss-passage">'+r.paragraphs.map(p=>'<p>'+highlight(p)+'</p>').join('')+'</div>'+(r.rows?'<table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody>'+r.rows.map(row=>'<tr><td>'+row[0]+'</td><td>'+row[1]+'</td></tr>').join('')+'</tbody></table>':'')+'<div class="ss-actions"><button type="button" class="ss-action ss-copy">Copy passage</button><span class="ss-muted ss-copy-status" role="status"></span></div><details><summary>Ranking details</summary><p>BM25 score: '+r.score+' · illustrative ranking</p></details>';
+    preview.querySelector('.ss-copy').onclick=async()=>{const txt=r.title+'\n'+r.location+'\n\n'+r.paragraphs.join('\n\n')+(r.rows?'\n\n'+r.rows.map(row=>row.join(' — ')).join('\n'):'');try{await navigator.clipboard.writeText(txt);preview.querySelector('.ss-copy-status').textContent='Copied';}catch{preview.querySelector('.ss-copy-status').textContent='Select passage text to copy.';}};
+    root.querySelector('pre').textContent=results.map((r,i)=>(i+1)+'. '+r.title+' | '+r.location+' | BM25 '+r.score+'\n'+r.paragraphs.join('\n')).join('\n\n');
+  }
+  function search(){query=form.elements.query.value;const terms=query.toLowerCase().trim().split(/\s+/).filter(Boolean);results=examples.filter(r=>terms.every(t=>(r.title+' '+r.paragraphs.join(' ')).toLowerCase().includes(t))).slice(0,Math.max(1,Number(form.elements.limit.value)||10));selected=Math.min(selected,Math.max(0,results.length-1));render();}
+  form.elements.query.value=query;search();form.onsubmit=e=>{e.preventDefault();selected=0;search();persist();};
+  window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.privateContent;if(s&&typeof s.query==='string'){form.elements.query.value=s.query;selected=s.selected||0;search();}});
+  if(globalThis.Tweak){const design={compact:false};const tweak=new Tweak({container:root,onChange:()=>root.classList.toggle('ss-compact',design.compact)});tweak.addToggle(design,'compact',{label:'Compact results'});}
+})();
+</script>
