@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.17 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.17 while retaining SDK assembly identity 2.0.0.0. Message Compare now has Request/Reply filters, a Show subfields checkbox, and Show only differences checked by default. The searchable field picker generates choices from both parsed inputs, includes decoded subfields, accepts comma/semicolon/newline-separated searches, and supports selecting matching fields together. Filter checkboxes share one action row, and comparison cards use tighter spacing, padding and slightly smaller text.
+
+The full Release suite passed 781 tests: Utilities 329, Parsing 161, Application 280 and Generation 11. The existing opt-in large-file test was skipped. The 16 Message Compare tests cover combined filters, parsed field choices, multiple search terms, selections, subfield visibility and stale-result invalidation. The Release desktop build passed with zero warnings/errors; its DLL reports file version 2.0.17.0. `git diff --check` passed. Live visual checks of the updated cards and filter controls remain manual. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
 ## Version 2.0.16 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.16 while retaining SDK assembly identity 2.0.0.0. Includes the ISO 8583 message builder, text/hex field input, automatic bitmap/prefix generation, EBCDIC encoding, accordion field editors and fitted hex/ASCII previews.

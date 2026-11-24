@@ -1,4 +1,5 @@
 using System.Text;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ProtoBench.Application.Workspaces;
 using ProtoBench.Core.Documents;
@@ -13,7 +14,13 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
     private readonly IParserRegistry registry;
     private string message1 = "", message2 = "", summary = "", diagnostics = "";
     private string? selectedFormatId;
-    private bool differencesOnly;
+    private bool differencesOnly = true;
+    private bool showSubfields = true;
+    private bool showRequest = true, showReply = true;
+    private bool hasReplies;
+    private int requestRowCount;
+    private string fieldSearch = "";
+    private IReadOnlyList<ComparisonFieldFilter> fields = [];
     private int revision;
     private IReadOnlyList<FieldComparison> rows = [];
     public override string ToolId => "message-compare";
@@ -24,11 +31,67 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
     public string? SelectedFormatId { get => selectedFormatId; set { if (SetProperty(ref selectedFormatId, value)) Invalidate(); } }
     public string Summary { get => summary; private set => SetProperty(ref summary, value); }
     public string Diagnostics { get => diagnostics; private set => SetProperty(ref diagnostics, value); }
-    public IReadOnlyList<FieldComparison> Rows { get => rows; private set { SetProperty(ref rows, value); OnPropertyChanged(nameof(VisibleRows)); } }
-    public IEnumerable<FieldComparison> VisibleRows => DifferencesOnly ? Rows.Where(r => r.Status != FieldComparisonStatus.Match) : Rows;
+    public IReadOnlyList<FieldComparison> Rows
+    {
+        get => rows;
+        private set
+        {
+            foreach (var option in fields) option.PropertyChanged -= FieldSelectionChanged;
+            SetProperty(ref rows, value);
+            fields = value.DistinctBy(FieldPath).Select(row => new ComparisonFieldFilter(FieldPath(row), row.Name)).ToArray();
+            foreach (var option in fields) option.PropertyChanged += FieldSelectionChanged;
+            OnPropertyChanged(nameof(Fields));
+            OnPropertyChanged(nameof(VisibleFields));
+            RefreshFilters();
+        }
+    }
+    public IEnumerable<FieldComparison> VisibleRows
+    {
+        get
+        {
+            var selected = Fields.Where(option => option.IsSelected).Select(option => option.Path).ToHashSet(StringComparer.Ordinal);
+            return Rows.Where((row, index) => (index < requestRowCount ? ShowRequest : ShowReply)
+                && (ShowSubfields || row.Depth == 0)
+                && (!DifferencesOnly || row.Status != FieldComparisonStatus.Match) && selected.Contains(FieldPath(row)));
+        }
+    }
+    public bool ShowRequest { get => showRequest; set { if (SetProperty(ref showRequest, value)) OnPropertyChanged(nameof(VisibleRows)); } }
+    public bool ShowReply { get => showReply; set { if (SetProperty(ref showReply, value)) OnPropertyChanged(nameof(VisibleRows)); } }
+    public bool ShowSubfields { get => showSubfields; set { if (SetProperty(ref showSubfields, value)) OnPropertyChanged(nameof(VisibleRows)); } }
+    public IReadOnlyList<ComparisonFieldFilter> Fields => fields;
+    public string FieldSearch { get => fieldSearch; set { if (SetProperty(ref fieldSearch, value)) OnPropertyChanged(nameof(VisibleFields)); } }
+    public IEnumerable<ComparisonFieldFilter> VisibleFields
+    {
+        get
+        {
+            var terms = FieldSearch.Split([',', ';', '\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            return Fields.Where(option => terms.Length == 0 || terms.Any(term =>
+                option.Path.Contains(term, StringComparison.OrdinalIgnoreCase) || option.Name.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        }
+    }
+    public string FieldFilterLabel => Fields.All(option => option.IsSelected) ? "Fields: All" : $"Fields: {Fields.Count(option => option.IsSelected)} of {Fields.Count}";
     public bool DifferencesOnly { get => differencesOnly; set { if (SetProperty(ref differencesOnly, value)) OnPropertyChanged(nameof(VisibleRows)); } }
     public IAsyncRelayCommand CompareCommand { get; }
     public IRelayCommand ClearCommand { get; }
+
+    public void SelectAllFields(bool selected)
+    {
+        foreach (var option in Fields) option.IsSelected = selected;
+    }
+
+    public void SelectMatchingFields()
+    {
+        var matching = VisibleFields.ToHashSet();
+        foreach (var option in Fields) option.IsSelected = matching.Contains(option);
+    }
+
+    private string FieldPath(FieldComparison row) => hasReplies ? row.Path[(row.Path.IndexOf(" / ", StringComparison.Ordinal) + 3)..] : row.Path;
+    private void FieldSelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => RefreshFilters();
+    private void RefreshFilters()
+    {
+        OnPropertyChanged(nameof(VisibleRows));
+        OnPropertyChanged(nameof(FieldFilterLabel));
+    }
 
     public MessageCompareWorkspace(IParserRegistry registry)
     {
@@ -70,19 +133,23 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
         var compared = await Task.Run(() =>
         {
             var comparisons = new List<FieldComparison>();
+            var requestCount = 0;
             for (var i = 0; i < result.a.Records.Count; i++)
             {
                 var section = i == 0 ? "Request" : "Reply";
                 comparisons.AddRange(MessageComparison.Compare(result.a.Records[i], result.b.Records[i], token)
                     .Select(row => paired ? row with { Path = section + " / " + row.Path } : row));
+                if (i == 0) requestCount = comparisons.Count;
             }
-            return comparisons;
+            return (Rows: comparisons, RequestCount: requestCount);
         }, token);
         token.ThrowIfCancellationRequested();
         if (version != revision) return;
-        var differences = compared.Count(r => r.Status != FieldComparisonStatus.Match);
-        Summary = $"{(paired ? "Request + reply" : "Single message")} · {compared.Count:N0} fields and subfields · {compared.Count - differences:N0} match · {differences:N0} differ";
-        Rows = compared;
+        var differences = compared.Rows.Count(r => r.Status != FieldComparisonStatus.Match);
+        Summary = $"{(paired ? "Request + reply" : "Single message")} · {compared.Rows.Count:N0} fields and subfields · {compared.Rows.Count - differences:N0} match · {differences:N0} differ";
+        hasReplies = paired;
+        requestRowCount = compared.RequestCount;
+        Rows = compared.Rows;
     });
 
     private static void Validate(ParseResult result, int number)
@@ -102,4 +169,13 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
     }
 
     public override void Dispose() { revision++; base.Dispose(); }
+}
+
+public sealed class ComparisonFieldFilter(string path, string name) : ObservableObject
+{
+    private bool isSelected = true;
+    public string Path { get; } = path;
+    public string Name { get; } = name;
+    public string Label => Path == Name ? Path : $"{Path} — {Name}";
+    public bool IsSelected { get => isSelected; set => SetProperty(ref isSelected, value); }
 }

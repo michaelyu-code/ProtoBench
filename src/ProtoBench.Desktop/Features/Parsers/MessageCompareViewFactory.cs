@@ -62,6 +62,50 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         {
             Source = vm, Path = new PropertyPath(nameof(vm.DifferencesOnly)), Mode = BindingMode.TwoWay
         });
+        CheckBox MessageFilter(string label, string property)
+        {
+            var box = new CheckBox { Content = label };
+            box.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(property), Mode = BindingMode.TwoWay });
+            return box;
+        }
+        var fieldSearch = new TextBox { PlaceholderText = "Search fields, e.g. 39, 55, 9F02", AcceptsReturn = true, MaxHeight = 100 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fieldSearch, "Search comparison fields");
+        fieldSearch.TextChanged += (_, _) => vm.FieldSearch = fieldSearch.Text;
+        var fieldChoices = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            MaxHeight = 320,
+            ItemTemplate = (DataTemplate)XamlReader.Load("""
+                <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                  <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                  </CheckBox>
+                </DataTemplate>
+                """)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fieldChoices, "Fields to show in comparison");
+        fieldChoices.SetBinding(ItemsControl.ItemsSourceProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.VisibleFields)) });
+        var fieldPicker = new DropDownButton
+        {
+            Flyout = new Flyout
+            {
+                Content = new StackPanel
+                {
+                    Width = 320, Spacing = 8,
+                    Children =
+                    {
+                        fieldSearch,
+                        Ui.Text("Fields come from the parsed messages. Separate searches with commas, semicolons or new lines, then tick fields or choose Show matching fields.", 13),
+                        Ui.Button("Show matching fields", vm.SelectMatchingFields),
+                        Ui.Row(Ui.Button("Select all", () => vm.SelectAllFields(true)), Ui.Button("Clear selection", () => vm.SelectAllFields(false))),
+                        fieldChoices
+                    }
+                }
+            }
+        };
+        fieldPicker.SetBinding(ContentControl.ContentProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.FieldFilterLabel)) });
+        ToolTipService.SetToolTip(fieldPicker, "Choose the fields and subfields to show in both requests and replies.");
         var list = new ListView { SelectionMode = ListViewSelectionMode.None, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, "Field and subfield comparison");
         list.SetBinding(ItemsControl.ItemsSourceProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.VisibleRows)) });
@@ -77,7 +121,10 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         results.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        results.Children.Add(ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Summary)), onlyDifferences,
+        results.Children.Add(ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Summary)),
+            Ui.Row(MessageFilter("Request", nameof(vm.ShowRequest)), MessageFilter("Reply", nameof(vm.ShowReply)),
+                onlyDifferences, MessageFilter("Show subfields", nameof(vm.ShowSubfields))),
+            fieldPicker,
             Ui.Text("Yellow edge = changed · Purple edge = missing. Red / green marks the differing text span.", 13)));
         var diagnostics = new Expander
         {

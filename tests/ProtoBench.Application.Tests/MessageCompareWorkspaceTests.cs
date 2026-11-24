@@ -114,6 +114,130 @@ public sealed class MessageCompareWorkspaceTests
         Assert.Contains("Message 2:", vm.Diagnostics);
     }
 
+    [Fact]
+    public async Task CombinesMessageFieldAndDifferenceFilters()
+    {
+        using var vm = Workspace();
+        vm.DifferencesOnly = false;
+        vm.SelectedFormatId = "synthetic-delimited";
+        vm.Message1 = "SYN|request|1\nSYN|reply|2";
+        vm.Message2 = "SYN|request|3\nSYN|reply|4";
+        await vm.CompareCommand.ExecuteAsync(null);
+        Assert.Equal(3, vm.Fields.Count);
+        vm.ShowReply = false;
+        Assert.Equal(3, vm.VisibleRows.Count());
+        Assert.All(vm.VisibleRows, row => Assert.StartsWith("Request / ", row.Path));
+        vm.ShowReply = true;
+        vm.ShowRequest = false;
+        Assert.All(vm.VisibleRows, row => Assert.StartsWith("Reply / ", row.Path));
+        vm.ShowReply = false;
+        Assert.Empty(vm.VisibleRows);
+        vm.ShowRequest = vm.ShowReply = true;
+        vm.SelectAllFields(false);
+        Assert.Empty(vm.VisibleRows);
+        vm.Fields.Single(field => field.Path == "count").IsSelected = true;
+        Assert.Equal(2, vm.VisibleRows.Count());
+        vm.DifferencesOnly = true;
+        vm.ShowReply = false;
+        Assert.Equal("Request / count", Assert.Single(vm.VisibleRows).Path);
+        vm.FieldSearch = "COUNT";
+        Assert.Equal("count", Assert.Single(vm.VisibleFields).Path);
+        vm.FieldSearch = "no such field";
+        Assert.Empty(vm.VisibleFields);
+        Assert.Single(vm.VisibleRows); // Searching choices does not change selected fields.
+        vm.Message1 = vm.Message2 = "SYN|single|1";
+        Assert.Empty(vm.Fields);
+        await vm.CompareCommand.ExecuteAsync(null);
+        Assert.All(vm.Fields, field => Assert.True(field.IsSelected));
+        vm.DifferencesOnly = false;
+        Assert.Equal(3, vm.VisibleRows.Count());
+        vm.ShowRequest = false;
+        Assert.Empty(vm.VisibleRows);
+    }
+
+    [Fact]
+    public async Task CanSelectDecodedSubfieldWithoutItsParentAndSearchByName()
+    {
+        var profile = MessageProfile.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions/messages/synthetic-record-v1.json")));
+        using var vm = new MessageCompareWorkspace(new ParserRegistry([new RecordMessageParser(profile)]));
+        vm.SelectedFormatId = profile.Id;
+        vm.Message1 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000100/";
+        vm.Message2 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000200/";
+        await vm.CompareCommand.ExecuteAsync(null);
+        vm.SelectAllFields(false);
+        var subfield = vm.Fields.Single(field => field.Path == "55 / 9F02");
+        subfield.IsSelected = true;
+        Assert.Equal("Reply / 55 / 9F02", Assert.Single(vm.VisibleRows).Path);
+        vm.FieldSearch = subfield.Name.ToUpperInvariant();
+        Assert.Contains(subfield, vm.VisibleFields);
+        vm.ClearCommand.Execute(null);
+        Assert.Empty(vm.Fields);
+        Assert.Empty(vm.VisibleRows);
+    }
+
+    [Fact]
+    public async Task SearchesMultipleParsedFieldsAndSelectsMatchesTogether()
+    {
+        var profile = MessageProfile.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions/messages/synthetic-record-v1.json")));
+        using var vm = new MessageCompareWorkspace(new ParserRegistry([new RecordMessageParser(profile)]));
+        vm.SelectedFormatId = profile.Id;
+        vm.Message1 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000100/";
+        vm.Message2 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000200/ Response=00";
+        await vm.CompareCommand.ExecuteAsync(null);
+        // Include fields from either input, reply-only fields and decoded subfields.
+        Assert.Contains(vm.Fields, option => option.Path == "39");
+        Assert.Contains(vm.Fields, option => option.Path == "55 / 9F02");
+        vm.FieldSearch = " 39, 9f02; unknown\r\n , ;";
+        Assert.Equal(new[] { "39", "55 / 9F02" }, vm.VisibleFields.Select(option => option.Path).OrderBy(path => path));
+        vm.SelectMatchingFields();
+        Assert.Equal(2, vm.VisibleRows.Count());
+        Assert.All(vm.VisibleRows, row => Assert.True(row.Path is "Reply / 39" or "Reply / 55 / 9F02"));
+        vm.FieldSearch = "";
+        Assert.Equal(vm.Fields.Count, vm.VisibleFields.Count());
+        Assert.Equal(2, vm.VisibleRows.Count()); // Clearing the search preserves selection.
+        vm.FieldSearch = " ; , \r\n ";
+        Assert.Equal(vm.Fields.Count, vm.VisibleFields.Count());
+        vm.FieldSearch = vm.Fields.Single(option => option.Path == "55 / 9F02").Name;
+        Assert.Contains(vm.Fields.Single(option => option.Path == "55 / 9F02"), vm.VisibleFields);
+        vm.FieldSearch = "not a parsed field";
+        vm.SelectMatchingFields();
+        Assert.Empty(vm.VisibleRows);
+        vm.Message1 = vm.Message2 = "Type=0200 Amount=000000000100";
+        await vm.CompareCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(vm.Fields, option => option.Path is "39" or "55 / 9F02");
+    }
+
+    [Fact]
+    public async Task DefaultsToDifferencesAndCanHideSubfieldsWithoutLosingSelections()
+    {
+        var profile = MessageProfile.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions/messages/synthetic-record-v1.json")));
+        using var vm = new MessageCompareWorkspace(new ParserRegistry([new RecordMessageParser(profile)]));
+        Assert.True(vm.DifferencesOnly);
+        Assert.True(vm.ShowSubfields);
+        vm.SelectedFormatId = profile.Id;
+        vm.Message1 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000100/";
+        vm.Message2 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000200/";
+        await vm.CompareCommand.ExecuteAsync(null);
+        Assert.All(vm.VisibleRows, row => Assert.NotEqual(FieldComparisonStatus.Match, row.Status));
+        Assert.Contains(vm.VisibleRows, row => row.Path == "Reply / 55 / 9F02");
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+        vm.ShowSubfields = false;
+        Assert.Contains(nameof(vm.VisibleRows), notifications);
+        Assert.All(vm.VisibleRows, row => Assert.Equal(0, row.Depth));
+        Assert.Contains(vm.VisibleRows, row => row.Path == "Reply / 55");
+        Assert.True(vm.Fields.Single(option => option.Path == "55 / 9F02").IsSelected);
+        vm.DifferencesOnly = false;
+        Assert.Contains(vm.VisibleRows, row => row.Status == FieldComparisonStatus.Match);
+        Assert.All(vm.VisibleRows, row => Assert.Equal(0, row.Depth));
+        vm.ShowSubfields = true;
+        Assert.Contains(vm.VisibleRows, row => row.Path == "Reply / 55 / 9F02");
+        vm.ShowReply = false;
+        Assert.All(vm.VisibleRows, row => Assert.StartsWith("Request / ", row.Path));
+        await vm.CompareCommand.ExecuteAsync(null);
+        Assert.False(vm.DifferencesOnly); // Respect an explicit change on subsequent comparisons.
+    }
+
     private sealed class DelayedParser : ILogParser
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
