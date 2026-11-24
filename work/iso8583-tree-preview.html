@@ -1,0 +1,87 @@
+<div id="iso-tree-preview" class="viz-dotted-background">
+  <style>
+    #iso-tree-preview { padding: 16px 0; }
+    #iso-tree-preview .iso-panel { --iso-bg: light-dark(#fafafa,#202020); --iso-fg: light-dark(#202020,#f3f3f3); --iso-muted: light-dark(#5b5b5b,#b8b8b8); --iso-line: light-dark(#dedede,#414141); --iso-button: light-dark(#fff,#333); --iso-hover: light-dark(#ededed,#383838); --iso-warning: light-dark(#785500,#f4cf81); background: var(--iso-bg); color: var(--iso-fg); border: 1px solid var(--iso-line); border-radius: 8px; font: 14px/1.5 'Segoe UI',sans-serif; padding: 20px; }
+    #iso-tree-preview .iso-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
+    #iso-tree-preview h2 { font-size:18px; font-weight:500; margin:0; }
+    #iso-tree-preview .iso-sub { color:var(--iso-muted); font-size:12px; }
+    #iso-tree-preview .iso-actions { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+    #iso-tree-preview button { font:inherit; color:var(--iso-fg); background:var(--iso-button); border:1px solid var(--iso-line); border-radius:4px; padding:6px 11px; }
+    #iso-tree-preview button:hover { background:var(--iso-hover); }
+    #iso-tree-preview .iso-warning { color:var(--iso-warning); margin:0 0 14px; }
+    #iso-tree-preview .iso-field { border-top:1px solid var(--iso-line); }
+    #iso-tree-preview summary { padding:10px 0; overflow-wrap:anywhere; }
+    #iso-tree-preview .iso-field > summary { font-weight:500; }
+    #iso-tree-preview .iso-code { font-family:Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
+    #iso-tree-preview .iso-summary-value { color:var(--iso-muted); margin-left:10px; font-weight:400; }
+    #iso-tree-preview .iso-children { margin:0 0 12px 7px; padding-left:21px; border-left:1px solid var(--iso-line); }
+    #iso-tree-preview .iso-property { display:grid; grid-template-columns:128px minmax(0,1fr); gap:10px; padding:4px 0; }
+    #iso-tree-preview .iso-label { color:var(--iso-muted); }
+    #iso-tree-preview .iso-wire > summary { color:var(--iso-muted); padding:6px 0; }
+    #iso-tree-preview .iso-wire-content { margin-left:7px; padding-left:16px; border-left:1px solid var(--iso-line); }
+    #iso-tree-preview .iso-badge { font-size:12px; color:var(--iso-warning); margin-left:8px; }
+    #iso-tree-preview .iso-footer { color:var(--iso-muted); font-size:12px; margin-top:12px; }
+    @media(max-width:440px) { #iso-tree-preview .iso-panel { padding:12px; } #iso-tree-preview .iso-property { grid-template-columns:1fr; gap:0; } #iso-tree-preview .iso-summary-value { display:block; margin-left:17px; } }
+  </style>
+  <section class="iso-panel" aria-label="ISO 8583 results tree preview">
+    <div class="iso-header"><h2>Results</h2><span class="iso-sub">example-ascii · 4 fields recovered</span></div>
+    <p class="iso-warning" role="status">Incomplete message: field 3 needs 6 value bytes; only 3 available.</p>
+    <div class="iso-actions" aria-label="Tree expansion">
+      <button type="button" class="cursor-interaction" data-mode="all">Expand all</button>
+      <button type="button" class="cursor-interaction" data-mode="none">Collapse all</button>
+      <button type="button" class="cursor-interaction" data-mode="level1">Expand level 1</button>
+    </div>
+    <div class="iso-tree" aria-label="Parsed fields"></div>
+    <div class="iso-footer" aria-live="polite">Level 1 · field values and source visible; wire details collapsed.</div>
+  </section>
+  <script>
+    (() => {
+      const root = document.getElementById('iso-tree-preview');
+      const tree = root.querySelector('.iso-tree');
+      const footer = root.querySelector('.iso-footer');
+      const rows = [
+        {id:0,name:'Message type indicator',value:'0200',source:'0200',raw:'30323030',start:0,end:4},
+        {id:1,name:'Primary / secondary bitmap',value:'6000000000000000',source:'6000000000000000',raw:'36303030303030303030303030303030',start:4,end:20},
+        {id:2,name:'Synthetic account identifier',value:'12345',source:'12345',prefix:'05',full:'0512345',raw:'30353132333435',start:22,end:27},
+        {id:3,name:'Processing code',value:'000',source:'000',raw:'303030',start:27,end:30,incomplete:true}
+      ];
+      function property(label, value) {
+        const row = document.createElement('div'); row.className='iso-property';
+        const caption = document.createElement('span'); caption.className='iso-label'; caption.textContent=label;
+        const text = document.createElement('span'); text.className='iso-code'; text.textContent=value;
+        row.append(caption,text); return row;
+      }
+      rows.forEach(field => {
+        const node=document.createElement('details'); node.className='iso-field'; node.dataset.depth='1'; node.open=true;
+        const title=document.createElement('summary'); title.className='cursor-interaction';
+        const label=document.createElement('span'); label.textContent=`Field ${field.id} · ${field.name}`;
+        const value=document.createElement('span'); value.className='iso-code iso-summary-value'; value.textContent=field.value;
+        title.append(label,value);
+        if(field.incomplete) { const badge=document.createElement('span'); badge.className='iso-badge'; badge.textContent='Incomplete'; title.append(badge); }
+        const children=document.createElement('div'); children.className='iso-children';
+        children.append(property('Source value',field.source));
+        const wire=document.createElement('details'); wire.className='iso-wire'; wire.dataset.depth='2';
+        const wireTitle=document.createElement('summary'); wireTitle.className='cursor-interaction'; wireTitle.textContent='Wire details';
+        const wireContent=document.createElement('div'); wireContent.className='iso-wire-content';
+        if(field.prefix) wireContent.append(property('Length prefix',field.prefix),property('Source field',field.full));
+        wireContent.append(property('Raw hex',field.raw),property('Value byte range',`${field.start}–${field.end} (end exclusive)`));
+        wire.append(wireTitle,wireContent); children.append(wire); node.append(title,children); tree.append(node);
+      });
+      function apply(mode) {
+        tree.querySelectorAll('details').forEach(node=> { node.open=mode==='all'||(mode==='level1'&&node.dataset.depth==='1'); });
+        footer.textContent= mode==='all' ? 'All levels expanded · values, source, prefixes and raw bytes visible.' : mode==='none' ? 'All fields collapsed · field names and decoded values remain visible.' : 'Level 1 · field values and source visible; wire details collapsed.';
+      }
+      function save() {
+        if(window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{preview:'ISO 8583 results tree'},privateContent:{open:[...tree.querySelectorAll('details')].map(n=>n.open)}}).catch(()=>{});
+      }
+      function restore(state) {
+        const open=state?.privateContent?.open;
+        if(Array.isArray(open)) tree.querySelectorAll('details').forEach((n,i)=>{n.open=Boolean(open[i]);});
+      }
+      restore(window.openai?.widgetState);
+      root.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{apply(button.dataset.mode);save();}));
+      tree.addEventListener('click',event=>{if(event.target.closest('summary')) { footer.textContent='Custom expansion'; setTimeout(save,0); }});
+      window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+    })();
+  </script>
+</div>

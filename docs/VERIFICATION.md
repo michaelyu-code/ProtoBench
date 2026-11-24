@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.23 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.23 while retaining assembly identity 2.0.0.0. This release includes the Text Compare alignment, navigation, reconciliation, file handling and compact layout improvements below, plus the ISO 8583 tree preview in `work/iso8583-tree-preview.html`.
+
+The full Release suite passed 808 tests: Utilities 347, Parsing 161, Application 289 and Generation 11. The existing opt-in 2 GiB test was skipped. The isolated x64 Release desktop build passed with zero warnings/errors. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
 ## Text Compare interface and reconciliation — 24 November 2026
 
 Previous/Next and the current-change indicator share the bottom summary row with section/line counts. Find/replace sits in the main toolbar, removing the extra top navigation row. Footer controls wrap in narrow layouts.
