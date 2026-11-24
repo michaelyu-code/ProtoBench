@@ -68,14 +68,13 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
             box.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(property), Mode = BindingMode.TwoWay });
             return box;
         }
-        var fieldSearch = new TextBox { PlaceholderText = "Search fields, e.g. 3, 39, 55", AcceptsReturn = true, MaxHeight = 100 };
+        var fieldSearch = new TextBox { PlaceholderText = "Search fields, e.g. 3, 39, 55", AcceptsReturn = true, Height = 40 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fieldSearch, "Search comparison fields");
         fieldSearch.TextChanged += (_, _) => vm.FieldSearch = fieldSearch.Text;
         var fieldChoices = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            MaxHeight = 320,
             ItemTemplate = (DataTemplate)XamlReader.Load("""
                 <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
                   <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Stretch">
@@ -86,22 +85,23 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fieldChoices, "Fields to show in comparison");
         fieldChoices.SetBinding(ItemsControl.ItemsSourceProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.VisibleFields)) });
-        var fieldPicker = new DropDownButton
+        var pickerContent = new Grid { Width = 320, Height = 500, RowSpacing = 8 };
+        pickerContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        pickerContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        pickerContent.Children.Add(ToolLayout.Stack(fieldSearch,
+            Ui.Button("Show matching fields", vm.SelectMatchingFields),
+            Ui.Row(Ui.Button("Select all", () => vm.SelectAllFields(true)), Ui.Button("Clear selection", () => vm.SelectAllFields(false)))));
+        Grid.SetRow(fieldChoices, 1);
+        pickerContent.Children.Add(fieldChoices);
+        var fieldFlyout = new Flyout { Content = pickerContent };
+        var fieldPicker = new DropDownButton { Flyout = fieldFlyout };
+        fieldFlyout.Opening += (_, _) =>
         {
-            Flyout = new Flyout
+            if (fieldPicker.XamlRoot is { } root)
             {
-                Content = new StackPanel
-                {
-                    Width = 320, Spacing = 8,
-                    Children =
-                    {
-                        fieldSearch,
-                        Ui.Text("Top-level fields come from the parsed messages. Separate searches with commas, semicolons or new lines, then tick fields or choose Show matching fields. Use Show subfields to show their decoded contents.", 13),
-                        Ui.Button("Show matching fields", vm.SelectMatchingFields),
-                        Ui.Row(Ui.Button("Select all", () => vm.SelectAllFields(true)), Ui.Button("Clear selection", () => vm.SelectAllFields(false))),
-                        fieldChoices
-                    }
-                }
+                // Size once when opened, so filtering cannot resize or reposition the flyout.
+                pickerContent.Width = Math.Max(160, Math.Min(320, root.Size.Width - 64));
+                pickerContent.Height = Math.Max(160, Math.Min(500, root.Size.Height - 80));
             }
         };
         fieldPicker.SetBinding(ContentControl.ContentProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.FieldFilterLabel)) });

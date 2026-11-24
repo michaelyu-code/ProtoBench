@@ -25,21 +25,20 @@
   </ResourceDictionary>
  </UserControl.Resources>
  <Grid x:Name="PageContent" Margin="12" RowSpacing="8">
-  <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="0" /></Grid.RowDefinitions>
-  <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+  <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="0" /></Grid.RowDefinitions>
+  <Button x:Name="BackToResultsButton" Content="← Back to results" Visibility="Collapsed" HorizontalAlignment="Left" />
+  <ScrollViewer x:Name="PageScroll" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Visible">
   <StackPanel Spacing="8">
    <TextBlock Text="Log Parser" FontSize="22" FontWeight="SemiBold" />
    <TextBlock x:Name="SetupIntroduction" Text="Open a log file or paste log text to inspect its records." TextWrapping="Wrap" />
    <Expander x:Name="InputPanel" Header="Log input" IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <StackPanel Spacing="10">
    <ComboBox x:Name="FormatPicker" Header="Format" HorizontalAlignment="Stretch" />
-   <controls:ActionRow>
-    <Button x:Name="ReparseFileButton" Content="Reparse file" IsEnabled="False" ToolTipService.ToolTip="Parse the current file again using the selected format" />
-   </controls:ActionRow>
    <TabView IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" TabWidthMode="SizeToContent" SelectedIndex="0">
     <TabViewItem Header="Paste text" IsClosable="False">
      <StackPanel Spacing="8" Padding="0,8,0,0">
-      <TextBox x:Name="PasteInput" Header="Log text" PlaceholderText="Paste or type log text here…" AcceptsReturn="True" TextWrapping="NoWrap" Height="180" FontFamily="Cascadia Mono" />
+      <TextBox x:Name="PasteInput" Header="Log text" PlaceholderText="Paste or type log text here…" AcceptsReturn="True" TextWrapping="NoWrap" Height="280" FontFamily="Cascadia Mono"
+          ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.HorizontalScrollBarVisibility="Visible" />
       <TextBlock Text="Paste or type log text, then choose Parse text. Very large pastes are kept ready for parsing without filling the editor." TextWrapping="Wrap" FontSize="12" />
       <TextBlock x:Name="PasteNotice" TextWrapping="Wrap" FontSize="12" />
       <controls:ActionRow>
@@ -54,6 +53,7 @@
       <controls:ActionRow>
        <Button x:Name="OpenButton" Content="Open file…" />
        <Button x:Name="ParsePathButton" Content="Parse path" />
+       <Button x:Name="ReparseFileButton" Content="Reparse file" IsEnabled="False" ToolTipService.ToolTip="Parse the current file again using the selected format" />
       </controls:ActionRow>
      </StackPanel>
     </TabViewItem>
@@ -74,7 +74,7 @@
    <TextBlock x:Name="Status" TextWrapping="Wrap" />
   </StackPanel>
   </ScrollViewer>
-  <Grid x:Name="SearchToolbar" Grid.Row="1" ColumnSpacing="8" Visibility="Collapsed">
+  <Grid x:Name="SearchToolbar" Grid.Row="2" ColumnSpacing="8" Visibility="Collapsed">
    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
    <TextBox x:Name="SearchInput" PlaceholderText="Search values or text…" AutomationProperties.Name="Search log values" />
    <Button x:Name="InputToggleButton" Grid.Column="1" Content="Log input" ToolTipService.ToolTip="Show log input, detection and parsing diagnostics" />
@@ -90,7 +90,7 @@
     </StackPanel></ScrollViewer></Flyout></Button.Flyout>
    </Button>
   </Grid>
-  <Grid x:Name="ResultsSection" Grid.Row="2" RowSpacing="8" Visibility="Collapsed">
+  <Grid x:Name="ResultsSection" Grid.Row="3" RowSpacing="8" Visibility="Collapsed">
    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
    <Grid ColumnSpacing="8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

@@ -1,5 +1,17 @@
 # Verification record
 
+## Version 2.0.20 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.20 while retaining SDK assembly identity 2.0.0.0. Message Compare's field picker keeps a stable size while searching, with a smaller fixed-height search box and the explanatory blurb removed. Log Parser reopens input at full workspace height with a larger editor, visible scrollbars and a fixed Back to results button. Reparse file now appears only in the Open file tab.
+
+The full Release suite passed 781 tests: Utilities 329, Parsing 161, Application 280 and Generation 11. The existing opt-in large-file test was skipped. The Release desktop build passed with zero warnings/errors; its DLL reports file version 2.0.20.0. `git diff --check` passed. Live input/results navigation checks with 30 synthetic records are recorded below. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
+## Reopened log input visibility — 24 November 2026
+
+Replaced the post-parse input area's 30% height cap with a full-workspace input view. A fixed Back to results button restores the existing results, the log editor grows with the workspace, and the editor and input page expose scrollbars. Reopening input returns the page to its top; keyboard focus follows the active view. Parsing still opens results automatically when that setting is enabled.
+
+The desktop Debug build passed with zero warnings/errors. Live checks in the development app parsed 30 synthetic records, reopened input with all text retained and a readable editor, and returned to the same 30 results and selected record using Back to results. The original running app was left open; the separate development test window was closed. Very small windows and alternate text scaling remain manual checks.
+
 ## Version 2.0.19 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.19 while retaining SDK assembly identity 2.0.0.0. Message Compare's field picker now lists only top-level parsed fields. Selecting a field includes its descendants when Show subfields is enabled, with request/reply and differences filters still applied. Updated picker guidance, examples and README. Paired comparison cards show a send icon beside Request and a return arrow beside Reply, including subfield cards.

@@ -154,7 +154,23 @@ public sealed partial class ParserView : UserControl
             if (BackToMessages.Visibility == Visibility.Visible) BackToMessages.Focus(FocusState.Programmatic);
         };
         InputToggleButton.Click += (_, _) => InputPanel.IsExpanded = !InputPanel.IsExpanded;
-        InputPanel.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) => ArrangePanes());
+        BackToResultsButton.Click += (_, _) =>
+        {
+            InputPanel.IsExpanded = false;
+            InputToggleButton.Focus(FocusState.Programmatic);
+        };
+        InputPanel.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) =>
+        {
+            ArrangePanes();
+            if (InputPanel.IsExpanded)
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () =>
+                    {
+                        if (!InputPanel.IsExpanded) return;
+                        PageScroll.ChangeView(null, 0, null, disableAnimation: true);
+                        if (hasResults) BackToResultsButton.Focus(FocusState.Programmatic);
+                    });
+        });
         Ui.Primary(ParseTextButton); Ui.Primary(ParsePathButton);
         ResultsViewPicker.SelectionChanged += (_, _) =>
         {
@@ -225,9 +241,6 @@ public sealed partial class ParserView : UserControl
         {
             hasResults = vm.Page is not null;
             SetupIntroduction.Visibility = hasResults ? Visibility.Collapsed : Visibility.Visible;
-            ResultsSection.Visibility = SearchToolbar.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
-            PageContent.RowDefinitions[0].Height = hasResults ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-            PageContent.RowDefinitions[2].Height = hasResults ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             inspectingMessage = false;
             ArrangePanes();
             refreshingRecords = suppressRecordScroll = true;
@@ -471,8 +484,8 @@ public sealed partial class ParserView : UserControl
                 scrollAfterParse = false;
                 if (vm.AutoScrollResults)
                 {
-                    ResultsViewPicker.Focus(FocusState.Programmatic);
                     InputPanel.IsExpanded = false;
+                    ResultsViewPicker.Focus(FocusState.Programmatic);
                     PageScroll.ChangeView(null, 0, null, disableAnimation: true);
                 }
             }
@@ -613,9 +626,13 @@ public sealed partial class ParserView : UserControl
         var showing = FieldDetailPanel.Visibility == Visibility.Visible;
         var compactPage = ActualWidth < 720 || ActualHeight < 640;
         PageContent.Margin = new Thickness(compactPage ? 8 : 12);
-        PageScroll.Visibility = !hasResults || InputPanel.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
-        PageScroll.MaxHeight = hasResults ? Math.Max(56, ActualHeight * 0.30) : double.PositiveInfinity;
-        PasteInput.Height = ActualHeight < 640 ? 110 : 180;
+        var inputVisible = !hasResults || InputPanel.IsExpanded;
+        PageScroll.Visibility = inputVisible ? Visibility.Visible : Visibility.Collapsed;
+        BackToResultsButton.Visibility = hasResults && inputVisible ? Visibility.Visible : Visibility.Collapsed;
+        ResultsSection.Visibility = SearchToolbar.Visibility = hasResults && !inputVisible ? Visibility.Visible : Visibility.Collapsed;
+        PageContent.RowDefinitions[1].Height = inputVisible ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        PageContent.RowDefinitions[3].Height = inputVisible ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        PasteInput.Height = Math.Clamp(ActualHeight * 0.4, 220, 420);
         var availableHeight = BrowseLayout.ActualHeight;
         var shortInspector = availableHeight < 330;
         SelectedSummary.Visibility = CheckSummary.Visibility = shortInspector ? Visibility.Collapsed : Visibility.Visible;
