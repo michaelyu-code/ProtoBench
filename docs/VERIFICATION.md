@@ -1,5 +1,23 @@
 # Verification record
 
+## Version 2.0.24 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.24 while retaining assembly identity 2.0.0.0. This release fixes long-line overflow in filtered Text Compare panes, adds shared horizontal scrolling for those panes, and aligns overview markers with visible rows and measured wrapped heights.
+
+The full Release suite passed 812 tests: Utilities 347, Parsing 161, Application 293 and Generation 11. The existing opt-in 2 GiB test was skipped. The isolated x64 Release desktop build passed with zero warnings/errors and reports file version 2.0.24.0. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
+## Filtered comparison overview mapping — 24 November 2026
+
+The overview now maps the filtered review's displayed rows rather than source-row positions, and uses measured row heights when text wraps. List padding is measured from the first rendered row. Hidden rows no longer offset markers, wrapped sections retain their displayed proportions, and resizing refreshes the mapping. Drawing and click-to-jump share the same geometry.
+
+The Application suite passed 293 tests, with the existing opt-in large-file test skipped. Four new overview tests cover hidden-row removal, wrapped/context heights, long-document compression, hit testing and clipping. The isolated desktop build passed with zero warnings/errors. Live checks verified two separated XML changes in Differences only, wrapped heights, selecting the second change by clicking its marker, and alignment after maximizing the window.
+
+## Filtered Text Compare long-line containment — 24 November 2026
+
+Fixed long XML/text lines widening filtered comparison rows and pushing the modified pane aside. Both panes now retain equal viewport widths and clip text within their own cells. A shared horizontal scrollbar moves the text in both panes while line numbers and the centre gutter stay fixed. Text is measured independently of the row width; wrapped rows track their text height and keep both sides aligned. Recycled row subscriptions are released when the filter or comparison changes.
+
+The isolated x64 Debug desktop build passed with zero warnings/errors. Live Windows checks used long XML-style lines in Differences only, verified containment at the beginning/middle/end of horizontal scrolling, confirmed both line endings were reachable, and checked wrapping and maximized-window reflow. No comparison-engine or source-text behavior changed.
+
 ## Version 2.0.23 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.23 while retaining assembly identity 2.0.0.0. This release includes the Text Compare alignment, navigation, reconciliation, file handling and compact layout improvements below, plus the ISO 8583 tree preview in `work/iso8583-tree-preview.html`.

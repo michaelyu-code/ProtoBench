@@ -36,7 +36,7 @@ public sealed partial class TextCompareViewFactory
         private readonly DispatcherTimer debounce = new() { Interval = TimeSpan.FromMilliseconds(400) };
         private bool active, applying, alignPending, stacked;
         private int alignmentVersion;
-        private double overviewPixelsPerRow = 1;
+        private IReadOnlyList<TextCompareOverviewMark> overviewMarks = [];
         private readonly FileSide leftFile = new(), rightFile = new();
         public FrameworkElement Root { get; }
 
@@ -106,12 +106,14 @@ public sealed partial class TextCompareViewFactory
             left.SizeChanged += (_, _) => UpdateOverviewBounds();
             right.SizeChanged += (_, _) => UpdateOverviewBounds();
             review.Viewport.SizeChanged += (_, _) => UpdateOverviewBounds();
+            review.OverviewChanged += () => { if (review.Visibility == Visibility.Visible) { UpdateOverviewBounds(); DrawOverview(); } };
             overview.SizeChanged += (_, _) => DrawOverview();
             overview.PointerPressed += (_, e) =>
             {
-                if (vm.Alignment is not { Changes.Count: > 0 } aligned) return;
-                var row = e.GetCurrentPoint(overview).Position.Y / overviewPixelsPerRow;
-                vm.SelectedChange = aligned.Changes.MinBy(c => Math.Abs(c.FirstRow - row))!.Index;
+                if (vm.Alignment is not { Changes.Count: > 0 }) return;
+                var change = TextCompareOverview.FindNearest(overviewMarks, e.GetCurrentPoint(overview).Position.Y);
+                if (change < 0) return;
+                vm.SelectedChange = change;
                 Reveal(); e.Handled = true;
             };
             ToolTipService.SetToolTip(overview, "Comparison overview · click to jump to a change");
@@ -256,32 +258,43 @@ public sealed partial class TextCompareViewFactory
             review.Update(aligned, visible, vm.SelectedChange, wrap.IsChecked, left.ShowWhitespace);
             displayNotice.Text = $"{aligned.Rows.Count - visible.Count} aligned rows hidden · choose View → All lines to edit.";
         }
-        private void OverviewLayoutUpdated(object? sender, object e) => UpdateOverviewBounds();
+        private void OverviewLayoutUpdated(object? sender, object e)
+        {
+            if (review.Visibility == Visibility.Visible) review.RefreshOverviewLayout();
+            UpdateOverviewBounds();
+        }
         private void UpdateOverviewBounds()
         {
             if (!panes.IsLoaded) return;
             FrameworkElement surface = review.Visibility == Visibility.Visible ? review.Viewport : stacked ? left : right;
             if (!surface.IsLoaded || surface.ActualHeight <= 0) return;
-            var top = Math.Clamp(surface.TransformToVisual(panes).TransformPoint(new Windows.Foundation.Point()).Y, 0, panes.ActualHeight);
-            var bottom = stacked && review.Visibility != Visibility.Visible ? 0 : Math.Max(0, panes.ActualHeight - top - surface.ActualHeight);
+            var surfaceTop = Math.Clamp(surface.TransformToVisual(panes).TransformPoint(new Windows.Foundation.Point()).Y, 0, panes.ActualHeight);
+            var top = Math.Min(panes.ActualHeight, surfaceTop + (review.Visibility == Visibility.Visible ? review.OverviewInset : 0));
+            var bottom = stacked && review.Visibility != Visibility.Visible ? 0 : Math.Max(0, panes.ActualHeight - surfaceTop - surface.ActualHeight);
             if (Math.Abs(overview.Margin.Top - top) > .1 || Math.Abs(overview.Margin.Bottom - bottom) > .1)
                 overview.Margin = new Thickness(0, top, 0, bottom);
         }
         private void DrawOverview()
         {
             overview.Children.Clear();
+            overviewMarks = [];
             overview.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, overview.ActualWidth, overview.ActualHeight) };
             if (vm.Alignment is not { } aligned || overview.ActualHeight <= 0) return;
             // Compress long documents, but never stretch a short document to fill the editor.
-            var rowHeight = review.Visibility == Visibility.Visible ? 26 : Math.Max(1, right.LineHeight);
-            var scale = overviewPixelsPerRow = Math.Max(.001, Math.Min(rowHeight, overview.ActualHeight / Math.Max(1, aligned.Rows.Count)));
-            // Bucket overview marks by pixel to keep rendering bounded for very large inputs.
-            foreach (var bucket in aligned.Changes.GroupBy(c => (int)(c.FirstRow * scale)))
+            if (review.Visibility == Visibility.Visible) overviewMarks = review.OverviewMarks(overview.ActualHeight);
+            else
             {
-                var selected = bucket.Any(c => c.Index == vm.SelectedChange);
-                var rect = new Rectangle { Width = 14, Height = Math.Min(overview.ActualHeight, Math.Max(3, bucket.Max(c => c.RowCount) * scale)),
+                var rowHeight = Math.Max(1, right.LineHeight);
+                overviewMarks = TextCompareOverview.Create(aligned.Rows.Select(row => (row.ChangeIndex, rowHeight)).ToArray(), overview.ActualHeight);
+            }
+            // Bucket overview marks by pixel to keep rendering bounded for very large inputs.
+            foreach (var bucket in overviewMarks.GroupBy(mark => (int)mark.Top))
+            {
+                var selected = bucket.Any(mark => mark.ChangeIndex == vm.SelectedChange);
+                var top = bucket.Min(mark => mark.Top);
+                var rect = new Rectangle { Width = 14, Height = bucket.Max(mark => mark.Top + mark.Height) - top,
                     Fill = new SolidColorBrush(selected ? Colors.DodgerBlue : Colors.DarkOrange), IsHitTestVisible = false };
-                Canvas.SetLeft(rect, 2); Canvas.SetTop(rect, Math.Min(bucket.Key, Math.Max(0, overview.ActualHeight - rect.Height)));
+                Canvas.SetLeft(rect, 2); Canvas.SetTop(rect, top);
                 overview.Children.Add(rect);
             }
         }
