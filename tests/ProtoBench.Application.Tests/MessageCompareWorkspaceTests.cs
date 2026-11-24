@@ -156,7 +156,7 @@ public sealed class MessageCompareWorkspaceTests
     }
 
     [Fact]
-    public async Task CanSelectDecodedSubfieldWithoutItsParentAndSearchByName()
+    public async Task PickerContainsOnlyParentFieldsAndSelectionIncludesTheirSubfields()
     {
         var profile = MessageProfile.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions/messages/synthetic-record-v1.json")));
         using var vm = new MessageCompareWorkspace(new ParserRegistry([new RecordMessageParser(profile)]));
@@ -165,11 +165,20 @@ public sealed class MessageCompareWorkspaceTests
         vm.Message2 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000200/";
         await vm.CompareCommand.ExecuteAsync(null);
         vm.SelectAllFields(false);
-        var subfield = vm.Fields.Single(field => field.Path == "55 / 9F02");
-        subfield.IsSelected = true;
-        Assert.Equal("Reply / 55 / 9F02", Assert.Single(vm.VisibleRows).Path);
-        vm.FieldSearch = subfield.Name.ToUpperInvariant();
-        Assert.Contains(subfield, vm.VisibleFields);
+        Assert.DoesNotContain(vm.Fields, option => option.Path == "55 / 9F02");
+        var parent = vm.Fields.Single(option => option.Path == "55");
+        parent.IsSelected = true;
+        Assert.Equal(new[] { "Reply / 55", "Reply / 55 / 9F02" }, vm.VisibleRows.Select(row => row.Path));
+        vm.ShowSubfields = false;
+        Assert.Equal("Reply / 55", Assert.Single(vm.VisibleRows).Path);
+        vm.ShowSubfields = true;
+        Assert.Equal(2, vm.VisibleRows.Count());
+        parent.IsSelected = false;
+        Assert.Empty(vm.VisibleRows);
+        vm.FieldSearch = parent.Name.ToUpperInvariant();
+        Assert.Contains(parent, vm.VisibleFields);
+        vm.FieldSearch = "9F02";
+        Assert.Empty(vm.VisibleFields);
         vm.ClearCommand.Execute(null);
         Assert.Empty(vm.Fields);
         Assert.Empty(vm.VisibleRows);
@@ -184,21 +193,21 @@ public sealed class MessageCompareWorkspaceTests
         vm.Message1 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000100/";
         vm.Message2 = "Type=0200 Amount=000000000100\nType=0210 ICC=9F02:06:000000000200/ Response=00";
         await vm.CompareCommand.ExecuteAsync(null);
-        // Include fields from either input, reply-only fields and decoded subfields.
+        // Include top-level fields from either input, including reply-only fields.
         Assert.Contains(vm.Fields, option => option.Path == "39");
-        Assert.Contains(vm.Fields, option => option.Path == "55 / 9F02");
-        vm.FieldSearch = " 39, 9f02; unknown\r\n , ;";
-        Assert.Equal(new[] { "39", "55 / 9F02" }, vm.VisibleFields.Select(option => option.Path).OrderBy(path => path));
+        Assert.DoesNotContain(vm.Fields, option => option.Path == "55 / 9F02");
+        vm.FieldSearch = " 39, 55; unknown\r\n , ;";
+        Assert.Equal(new[] { "39", "55" }, vm.VisibleFields.Select(option => option.Path).OrderBy(path => path));
         vm.SelectMatchingFields();
-        Assert.Equal(2, vm.VisibleRows.Count());
-        Assert.All(vm.VisibleRows, row => Assert.True(row.Path is "Reply / 39" or "Reply / 55 / 9F02"));
+        Assert.Equal(3, vm.VisibleRows.Count());
+        Assert.All(vm.VisibleRows, row => Assert.True(row.Path is "Reply / 39" or "Reply / 55" or "Reply / 55 / 9F02"));
         vm.FieldSearch = "";
         Assert.Equal(vm.Fields.Count, vm.VisibleFields.Count());
-        Assert.Equal(2, vm.VisibleRows.Count()); // Clearing the search preserves selection.
+        Assert.Equal(3, vm.VisibleRows.Count()); // Clearing the search preserves selection.
         vm.FieldSearch = " ; , \r\n ";
         Assert.Equal(vm.Fields.Count, vm.VisibleFields.Count());
-        vm.FieldSearch = vm.Fields.Single(option => option.Path == "55 / 9F02").Name;
-        Assert.Contains(vm.Fields.Single(option => option.Path == "55 / 9F02"), vm.VisibleFields);
+        vm.FieldSearch = vm.Fields.Single(option => option.Path == "55").Name;
+        Assert.Contains(vm.Fields.Single(option => option.Path == "55"), vm.VisibleFields);
         vm.FieldSearch = "not a parsed field";
         vm.SelectMatchingFields();
         Assert.Empty(vm.VisibleRows);
@@ -226,7 +235,7 @@ public sealed class MessageCompareWorkspaceTests
         Assert.Contains(nameof(vm.VisibleRows), notifications);
         Assert.All(vm.VisibleRows, row => Assert.Equal(0, row.Depth));
         Assert.Contains(vm.VisibleRows, row => row.Path == "Reply / 55");
-        Assert.True(vm.Fields.Single(option => option.Path == "55 / 9F02").IsSelected);
+        Assert.True(vm.Fields.Single(option => option.Path == "55").IsSelected);
         vm.DifferencesOnly = false;
         Assert.Contains(vm.VisibleRows, row => row.Status == FieldComparisonStatus.Match);
         Assert.All(vm.VisibleRows, row => Assert.Equal(0, row.Depth));

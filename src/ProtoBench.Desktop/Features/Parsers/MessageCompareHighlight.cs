@@ -9,6 +9,21 @@ using ProtoBench.Parsing;
 
 namespace ProtoBench.Desktop.Features.Parsers;
 
+public sealed class MessageCompareDirectionIcon : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var path = value as string ?? "";
+        var reply = path.StartsWith("Reply / ", StringComparison.Ordinal);
+        var request = path.StartsWith("Request / ", StringComparison.Ordinal);
+        if (parameter?.ToString() == "Visibility")
+            return request || reply ? Visibility.Visible : Visibility.Collapsed;
+        return reply ? Symbol.Back : Symbol.Send;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
+}
+
 public sealed class MessageCompareStatusVisibility : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)

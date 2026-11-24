@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.19 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.19 while retaining SDK assembly identity 2.0.0.0. Message Compare's field picker now lists only top-level parsed fields. Selecting a field includes its descendants when Show subfields is enabled, with request/reply and differences filters still applied. Updated picker guidance, examples and README. Paired comparison cards show a send icon beside Request and a return arrow beside Reply, including subfield cards.
+
+The full Release suite passed 781 tests: Utilities 329, Parsing 161, Application 280 and Generation 11. The existing opt-in large-file test was skipped. Updated comparison tests verify top-level choices, parent selection with subfield visibility, multi-field search and selection preservation. The Release desktop build passed with zero warnings/errors; its DLL reports file version 2.0.19.0. `git diff --check` passed. Live visual checks of the icons remain manual. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
 ## Version 2.0.18 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.18 while retaining SDK assembly identity 2.0.0.0. Text Compare now shows a dot (`.`) in each gutter for wrapped continuation rows, while actual text lines retain their logical line numbers. Gutter rendering locates visible character positions before stepping through display lines, including continuations whose numbered row has scrolled above the viewport. Updated the tool help and README.

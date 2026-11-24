@@ -68,7 +68,7 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
             box.SetBinding(CheckBox.IsCheckedProperty, new Binding { Source = vm, Path = new PropertyPath(property), Mode = BindingMode.TwoWay });
             return box;
         }
-        var fieldSearch = new TextBox { PlaceholderText = "Search fields, e.g. 39, 55, 9F02", AcceptsReturn = true, MaxHeight = 100 };
+        var fieldSearch = new TextBox { PlaceholderText = "Search fields, e.g. 3, 39, 55", AcceptsReturn = true, MaxHeight = 100 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fieldSearch, "Search comparison fields");
         fieldSearch.TextChanged += (_, _) => vm.FieldSearch = fieldSearch.Text;
         var fieldChoices = new ListView
@@ -96,7 +96,7 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
                     Children =
                     {
                         fieldSearch,
-                        Ui.Text("Fields come from the parsed messages. Separate searches with commas, semicolons or new lines, then tick fields or choose Show matching fields.", 13),
+                        Ui.Text("Top-level fields come from the parsed messages. Separate searches with commas, semicolons or new lines, then tick fields or choose Show matching fields. Use Show subfields to show their decoded contents.", 13),
                         Ui.Button("Show matching fields", vm.SelectMatchingFields),
                         Ui.Row(Ui.Button("Select all", () => vm.SelectAllFields(true)), Ui.Button("Clear selection", () => vm.SelectAllFields(false))),
                         fieldChoices
@@ -105,7 +105,7 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
             }
         };
         fieldPicker.SetBinding(ContentControl.ContentProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.FieldFilterLabel)) });
-        ToolTipService.SetToolTip(fieldPicker, "Choose the fields and subfields to show in both requests and replies.");
+        ToolTipService.SetToolTip(fieldPicker, "Choose top-level fields to show in both requests and replies. Their subfields follow Show subfields.");
         var list = new ListView { SelectionMode = ListViewSelectionMode.None, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(list, "Field and subfield comparison");
         list.SetBinding(ItemsControl.ItemsSourceProperty, new Binding { Source = vm, Path = new PropertyPath(nameof(vm.VisibleRows)) });

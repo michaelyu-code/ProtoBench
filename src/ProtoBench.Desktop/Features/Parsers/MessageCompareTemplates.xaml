@@ -33,6 +33,7 @@
                       </ResourceDictionary>
                     </ResourceDictionary.ThemeDictionaries>
                     <parsers:MessageCompareStatusVisibility x:Key="StatusVisibility"/>
+                    <parsers:MessageCompareDirectionIcon x:Key="DirectionIcon"/>
                   </ResourceDictionary>
                 </Grid.Resources>
                 <Border Background="{ThemeResource ChangedSurface}" CornerRadius="8"
@@ -47,7 +48,15 @@
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.ColumnSpan="2" Spacing="4">
-                    <TextBlock Text="{Binding Path}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <Grid ColumnSpacing="6">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <SymbolIcon Symbol="{Binding Path, Converter={StaticResource DirectionIcon}}"
+                          Visibility="{Binding Path, Converter={StaticResource DirectionIcon}, ConverterParameter=Visibility}"
+                          VerticalAlignment="Top" Margin="0,2,0,0" Width="14" Height="14"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          AutomationProperties.AccessibilityView="Raw"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Path}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    </Grid>
                     <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" TextWrapping="Wrap"/>
                     <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">

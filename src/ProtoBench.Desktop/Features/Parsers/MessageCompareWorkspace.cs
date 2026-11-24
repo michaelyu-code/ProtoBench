@@ -21,6 +21,7 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
     private int requestRowCount;
     private string fieldSearch = "";
     private IReadOnlyList<ComparisonFieldFilter> fields = [];
+    private IReadOnlyList<string> rootFieldPaths = [];
     private int revision;
     private IReadOnlyList<FieldComparison> rows = [];
     public override string ToolId => "message-compare";
@@ -38,7 +39,16 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
         {
             foreach (var option in fields) option.PropertyChanged -= FieldSelectionChanged;
             SetProperty(ref rows, value);
-            fields = value.DistinctBy(FieldPath).Select(row => new ComparisonFieldFilter(FieldPath(row), row.Name)).ToArray();
+            fields = value.Where(row => row.Depth == 0).DistinctBy(FieldPath)
+                .Select(row => new ComparisonFieldFilter(FieldPath(row), row.Name)).ToArray();
+            var roots = new List<string>(value.Count);
+            var root = "";
+            foreach (var row in value)
+            {
+                if (row.Depth == 0) root = FieldPath(row);
+                roots.Add(root);
+            }
+            rootFieldPaths = roots;
             foreach (var option in fields) option.PropertyChanged += FieldSelectionChanged;
             OnPropertyChanged(nameof(Fields));
             OnPropertyChanged(nameof(VisibleFields));
@@ -52,7 +62,7 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
             var selected = Fields.Where(option => option.IsSelected).Select(option => option.Path).ToHashSet(StringComparer.Ordinal);
             return Rows.Where((row, index) => (index < requestRowCount ? ShowRequest : ShowReply)
                 && (ShowSubfields || row.Depth == 0)
-                && (!DifferencesOnly || row.Status != FieldComparisonStatus.Match) && selected.Contains(FieldPath(row)));
+                && (!DifferencesOnly || row.Status != FieldComparisonStatus.Match) && selected.Contains(rootFieldPaths[index]));
         }
     }
     public bool ShowRequest { get => showRequest; set { if (SetProperty(ref showRequest, value)) OnPropertyChanged(nameof(VisibleRows)); } }
