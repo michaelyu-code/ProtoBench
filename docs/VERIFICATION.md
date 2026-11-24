@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.18 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.18 while retaining SDK assembly identity 2.0.0.0. Text Compare now shows a dot (`.`) in each gutter for wrapped continuation rows, while actual text lines retain their logical line numbers. Gutter rendering locates visible character positions before stepping through display lines, including continuations whose numbered row has scrolled above the viewport. Updated the tool help and README.
+
+The full Release suite passed 781 tests: Utilities 329, Parsing 161, Application 280 and Generation 11. The existing opt-in large-file test was skipped. The Release desktop build passed with zero warnings/errors; its DLL reports file version 2.0.18.0. `git diff --check` passed. Live visual checks of continuation dots, scrolling and resizing remain manual. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
 ## Version 2.0.17 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.17 while retaining SDK assembly identity 2.0.0.0. Message Compare now has Request/Reply filters, a Show subfields checkbox, and Show only differences checked by default. The searchable field picker generates choices from both parsed inputs, includes decoded subfields, accepts comma/semicolon/newline-separated searches, and supports selecting matching fields together. Filter checkboxes share one action row, and comparison cards use tighter spacing, padding and slightly smaller text.

@@ -62,7 +62,7 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
         Grid.SetRow(feedback, 1); content.Children.Add(feedback);
         Grid.SetRow(panes, 2); content.Children.Add(panes);
         return ToolLayout.FittedPage(vm.Title, "Edit and compare both texts here. Red = removed; green = added.", content,
-            ToolLayout.Help(Ui.Text("Paste the original and modified text, then select Compare text. Differences are highlighted directly in the editable inputs. Both panes fill the available space and scroll independently, with line numbers for each actual text line. Select Wrap text to wrap long lines in both editors; wrapped continuations do not get extra line numbers. Wrapping only changes the display. Comparison is case-sensitive and includes whitespace. The editor uses a single paragraph mark for each line ending. Emoji and combining characters stay together. Each input supports up to 100,000 characters. Large changes may be highlighted as whole blocks. Editing either input clears the previous highlights; select Compare text to refresh them.")));
+            ToolLayout.Help(Ui.Text("Paste the original and modified text, then select Compare text. Differences are highlighted directly in the editable inputs. Both panes fill the available space and scroll independently, with line numbers for each actual text line. Select Wrap text to wrap long lines in both editors; each wrapped continuation shows a dot (.) in the line-number gutter. Wrapping only changes the display. Comparison is case-sensitive and includes whitespace. The editor uses a single paragraph mark for each line ending. Emoji and combining characters stay together. Each input supports up to 100,000 characters. Large changes may be highlighted as whole blocks. Editing either input clears the previous highlights; select Compare text to refresh them.")));
     }
 
     private sealed class ComparisonEditor : RichEditBox
@@ -202,27 +202,34 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
             // RichEdit's client coordinates start inside the ScrollViewer's padding.
             var contentTop = viewport is null ? 0 : viewport.TransformToVisual(numbers)
                 .TransformPoint(new Windows.Foundation.Point(0, viewport.Padding.Top)).Y;
-            double Baseline(int line)
+            double Baseline(int position)
             {
-                Document.GetRange(lineStarts[line], lineStarts[line]).GetPoint(HorizontalCharacterAlignment.Left,
+                Document.GetRange(position, position).GetPoint(HorizontalCharacterAlignment.Left,
                     VerticalCharacterAlignment.Baseline, PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var point);
                 return contentTop + point.Y - (viewport?.VerticalOffset ?? 0);
             }
-            // Find the first visible logical line without measuring every line in a large input.
-            var low = 0; var high = lineStarts.Count;
+            // Search character positions so a long wrapped line can start above the viewport
+            // without skipping its visible continuations or walking all its offscreen rows.
+            var low = 0; var high = current.Length;
             while (low < high)
             {
                 var middle = low + (high - low) / 2;
                 if (Baseline(middle) < -NumberFontSize * 2) low = middle + 1;
                 else high = middle;
             }
-            for (var line = low; line < lineStarts.Count; line++)
+            var visualLine = Document.GetRange(low, low);
+            visualLine.StartOf(TextRangeUnit.Line, false);
+            while (visualLine.StartPosition <= current.Length)
             {
-                var baseline = Baseline(line);
+                var position = visualLine.StartPosition;
+                var baseline = Baseline(position);
                 if (baseline - NumberFontSize >= ActualHeight) break;
+                var logicalLine = lineStarts.BinarySearch(position);
+                // Only the first visual row gets a number; subsequent rows get a dot.
+                var marker = logicalLine >= 0 ? (logicalLine + 1).ToString() : ".";
                 var label = new TextBlock
                 {
-                    Text = (line + 1).ToString(), FontFamily = FontFamily, FontSize = NumberFontSize,
+                    Text = marker, FontFamily = FontFamily, FontSize = NumberFontSize,
                     Opacity = .65, TextAlignment = TextAlignment.Right, Width = numbers.Width - 10
                 };
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(label, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
@@ -231,6 +238,7 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
                 // Match measured baselines instead of aligning their bounding-box tops.
                 label.Measure(new Windows.Foundation.Size(label.Width, double.PositiveInfinity));
                 Canvas.SetTop(label, baseline - label.BaselineOffset);
+                if (visualLine.Move(TextRangeUnit.Line, 1) == 0 || visualLine.StartPosition <= position) break;
             }
         }
 
