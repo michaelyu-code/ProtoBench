@@ -20,6 +20,11 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
         var original = new ComparisonEditor("Original text · removals in red", () => vm.Original, text => vm.Original = text);
         var modified = new ComparisonEditor("Modified text · additions in green", () => vm.Modified, text => vm.Modified = text);
         var wrap = new CheckBox { Content = "Wrap text" };
+        var unifiedScroll = new CheckBox { Content = "Unified scrolling", IsChecked = true };
+        original.ScrollChanged += source => { if (unifiedScroll.IsChecked == true) modified.SyncScrollFrom(source); };
+        modified.ScrollChanged += source => { if (unifiedScroll.IsChecked == true) original.SyncScrollFrom(source); };
+        unifiedScroll.Checked += (_, _) => modified.SyncScrollFrom(original);
+        ToolTipService.SetToolTip(unifiedScroll, "Scroll both texts together. Untick to scroll each pane independently.");
         void SetWrapping() { original.SetWrapping(wrap.IsChecked == true); modified.SetWrapping(wrap.IsChecked == true); }
         wrap.Checked += (_, _) => SetWrapping();
         wrap.Unchecked += (_, _) => SetWrapping();
@@ -57,12 +62,12 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         content.Children.Add(Ui.Row(Ui.Primary(new Button { Content = "Compare text", Command = vm.CompareCommand }),
             new Button { Content = "Swap", Command = vm.SwapCommand }, new Button { Content = "Clear", Command = vm.ClearCommand },
-            wrap, Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
+            wrap, unifiedScroll, Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
         var feedback = ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Error)), Ui.BoundText(vm, nameof(vm.Summary)));
         Grid.SetRow(feedback, 1); content.Children.Add(feedback);
         Grid.SetRow(panes, 2); content.Children.Add(panes);
         return ToolLayout.FittedPage(vm.Title, "Edit and compare both texts here. Red = removed; green = added.", content,
-            ToolLayout.Help(Ui.Text("Paste the original and modified text, then select Compare text. Differences are highlighted directly in the editable inputs. Both panes fill the available space and scroll independently, with line numbers for each actual text line. Select Wrap text to wrap long lines in both editors; each wrapped continuation shows a dot (.) in the line-number gutter. Wrapping only changes the display. Comparison is case-sensitive and includes whitespace. The editor uses a single paragraph mark for each line ending. Emoji and combining characters stay together. Each input supports up to 100,000 characters. Large changes may be highlighted as whole blocks. Editing either input clears the previous highlights; select Compare text to refresh them.")));
+            ToolLayout.Help(Ui.Text("Paste the original and modified text, then select Compare text. Differences are highlighted directly in the editable inputs. Both panes fill the available space, with line numbers for each actual text line. Unified scrolling starts checked and moves both panes together vertically and horizontally. Untick it to scroll each pane independently; ticking it again aligns the modified pane with the original. Select Wrap text to wrap long lines in both editors; each wrapped continuation shows a dot (.) in the line-number gutter. Wrapping only changes the display. Comparison is case-sensitive and includes whitespace. The editor uses a single paragraph mark for each line ending. Emoji and combining characters stay together. There is no fixed character or line limit per input. Large changes may be highlighted as whole blocks. Editing either input clears the previous highlights; select Compare text to refresh them.")));
     }
 
     private sealed class ComparisonEditor : RichEditBox
@@ -75,6 +80,8 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
         private readonly Canvas numbers = new() { IsHitTestVisible = false, Width = 44 };
         private readonly List<int> lineStarts = [0];
         private ScrollViewer? viewport;
+        private bool syncingScroll;
+        public event Action<ComparisonEditor>? ScrollChanged;
         private bool numbersPending;
         private double lastTextTop = double.NaN;
         private double NumberFontSize => normal.Size * 96d / 72d;
@@ -85,7 +92,7 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
             this.read = read;
             this.write = write;
             AcceptsReturn = true;
-            MaxLength = TextComparison.MaxCharacters;
+            MaxLength = 0;
             MinHeight = 0;
             TextWrapping = TextWrapping.NoWrap;
             FontFamily = new FontFamily("Consolas");
@@ -110,13 +117,16 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
             Loaded += (_, _) =>
             {
                 viewport = FindViewport(this);
+                if (viewport is not null) viewport.ViewChanged += ViewChanged;
                 CompositionTarget.Rendering += Rendering;
                 UpdateLineStarts();
             };
             Unloaded += (_, _) =>
             {
                 CompositionTarget.Rendering -= Rendering;
+                if (viewport is not null) viewport.ViewChanged -= ViewChanged;
                 viewport = null;
+                syncingScroll = false;
             };
             SizeChanged += (_, _) => ScheduleNumbers();
             SyncText();
@@ -147,6 +157,25 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
             TextWrapping = enabled ? TextWrapping.Wrap : TextWrapping.NoWrap;
             ScrollViewer.SetHorizontalScrollBarVisibility(this, enabled ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollMode(this, enabled ? ScrollMode.Disabled : ScrollMode.Auto);
+            ScheduleNumbers();
+        }
+
+        public void SyncScrollFrom(ComparisonEditor source)
+        {
+            if (viewport is null || source.viewport is null) return;
+            var vertical = Math.Clamp(source.viewport.VerticalOffset, 0, viewport.ScrollableHeight);
+            var horizontal = Math.Clamp(source.viewport.HorizontalOffset, 0, viewport.ScrollableWidth);
+            if (Math.Abs(viewport.VerticalOffset - vertical) < .1 && Math.Abs(viewport.HorizontalOffset - horizontal) < .1) return;
+            // Keep the follower's asynchronous ViewChanged events from driving the source
+            // back to its position, especially when one text reaches its end first.
+            syncingScroll = true;
+            if (!viewport.ChangeView(horizontal, vertical, null, disableAnimation: true)) syncingScroll = false;
+        }
+
+        private void ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+        {
+            if (!syncingScroll && !updating) ScrollChanged?.Invoke(this);
+            if (!e.IsIntermediate) syncingScroll = false;
             ScheduleNumbers();
         }
 

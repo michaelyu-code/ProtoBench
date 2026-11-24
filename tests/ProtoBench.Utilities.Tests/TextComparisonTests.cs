@@ -72,11 +72,47 @@ public sealed class TextComparisonTests
     }
 
     [Fact]
-    public void EnforcesLimitsAndCancellation()
+    public void ComparesThousandsOfLinesBeyondTheOldCharacterLimitWithoutTruncating()
     {
-        Assert.Throws<FormatException>(() => TextComparison.Compare(new string('x', TextComparison.MaxCharacters + 1), ""));
-        Assert.Throws<FormatException>(() => TextComparison.Compare("", new string('x', TextComparison.MaxCharacters + 1)));
-        Assert.True(TextComparison.Compare(new string('x', TextComparison.MaxCharacters), new string('x', TextComparison.MaxCharacters)).AreEqual);
+        var original = string.Concat(Enumerable.Range(1, 6000).Select(i => $"Line {i:D4}: {new string('x', 80)}\r\n"));
+        var modified = original.Replace("Line 5500:", "Line 5501:");
+        Assert.True(original.Length > 100_000);
+        var result = TextComparison.Compare(original, modified);
+        Assert.False(result.AreEqual);
+        Assert.False(result.HasCoarseChanges);
+        Assert.Equal("0", Join(result, TextDifferenceKind.Removed));
+        Assert.Equal("1", Join(result, TextDifferenceKind.Added));
+        AssertReconstructs(original, modified, result);
+        Assert.True(TextComparison.Compare(original, original).AreEqual);
+    }
+
+    [Fact]
+    public void LargeReplacementsFallBackWithoutDroppingText()
+    {
+        var original = "shared start\n" + new string('x', 1_000_000) + "\nshared end";
+        var modified = "shared start\n" + new string('y', 1_000_000) + "\nshared end";
+        var result = TextComparison.Compare(original, modified);
+        Assert.True(result.HasCoarseChanges);
+        AssertReconstructs(original, modified, result);
+        Assert.Contains(result.Differences, change => change.Kind == TextDifferenceKind.Equal && change.Text.Contains("shared end"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void LargeOneSidedTextIsRetainedInFull(bool added)
+    {
+        var text = new string('x', 1_000_000);
+        var original = added ? "" : text;
+        var modified = added ? text : "";
+        var result = TextComparison.Compare(original, modified);
+        AssertReconstructs(original, modified, result);
+        Assert.False(result.HasCoarseChanges);
+    }
+
+    [Fact]
+    public void HonorsCancellation()
+    {
         Assert.Throws<OperationCanceledException>(() => TextComparison.Compare("a", "b", new CancellationToken(true)));
     }
 

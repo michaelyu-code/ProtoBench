@@ -1,5 +1,23 @@
 # Verification record
 
+## Version 2.0.21 release checks — 24 November 2026
+
+Bumped package/file version to 2.0.21 while retaining SDK assembly identity 2.0.0.0. Text Compare now offers Unified scrolling, checked by default, with independent scrolling when unticked. Removed the 100,000-character limit from both editors and the comparison engine; large replacements use whole-block highlights without discarding input. Updated the README and tool help.
+
+The full Release suite passed 785 tests: Utilities 333, Parsing 161, Application 280 and Generation 11. The existing opt-in large-file test was skipped. The Release desktop build passed with zero warnings/errors; its DLL reports file version 2.0.21.0. `git diff --check` passed. Live scrolling and complete 3,000-line paste/comparison checks are recorded below. Installer/portable packaging and GitHub publication are handled by the tagged CI workflow.
+
+## Text Compare input limit removal — 24 November 2026
+
+Removed the 100,000-character editor and comparison-engine limits. Inputs no longer have a fixed app-imposed character or line cap. Large one-sided changes retain their full text without grapheme expansion; replacements exceeding 200,000 combined characters use the existing whole-block highlight behavior instead of allocating a string for every grapheme. Updated help and README.
+
+All 19 TextComparison tests passed, including 6,000-line inputs exceeding the previous limit with a precise change near the end, identical large inputs, million-character additions/removals/replacements, full reconstruction and cancellation. The desktop Debug build to `artifacts/textcompareunlimitedcheck` passed with zero warnings/errors. Live checks pasted all 3,000 lines (320,999 characters) into the original pane and the same text plus a final addition into the modified pane, completed comparison and showed the added text highlighted on line 3,000. The separate large-paste test window was closed afterward.
+
+## Text Compare unified scrolling — 24 November 2026
+
+Added a Unified scrolling checkbox, checked by default, linking the editors' horizontal and vertical scroll offsets. Unticking restores independent scrolling; re-enabling aligns the modified pane to the original. Each editor clamps to its own scroll range, with follower scroll events suppressed until completion to avoid pulling the source back when text lengths differ. Scroll handlers detach when editors unload. Updated the tool help and README.
+
+The desktop Debug build passed with zero warnings/errors. Live checks with 100 original lines and 70 modified lines confirmed scrolling upward from either pane moves both to the same visible line, unticking permits independent positions, re-enabling aligns them, and scrolling the longer text beyond the shorter text's bottom does not pull it back. Scrollbar-drag verification was interrupted by detected user input; horizontal scrolling, wrapped long lines and narrow-window layouts remain manual checks.
+
 ## Version 2.0.20 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.20 while retaining SDK assembly identity 2.0.0.0. Message Compare's field picker keeps a stable size while searching, with a smaller fixed-height search box and the explanatory blurb removed. Log Parser reopens input at full workspace height with a larger editor, visible scrollbars and a fixed Back to results button. Reparse file now appears only in the Open file tab.

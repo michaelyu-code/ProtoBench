@@ -12,15 +12,13 @@ public sealed record TextComparisonResult(IReadOnlyList<TextDifference> Differen
 
 public static class TextComparison
 {
-    public const int MaxCharacters = 100_000;
+    private const int MaxRefinementCharacters = 200_000;
     private const int MaxDistance = 512;
 
     public static TextComparisonResult Compare(string original, string modified, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(modified);
-        if (original.Length > MaxCharacters || modified.Length > MaxCharacters)
-            throw new FormatException("Text comparison is limited to 100,000 characters per input.");
         cancellationToken.ThrowIfCancellationRequested();
         var budget = 8_000_000;
         var coarse = false;
@@ -37,7 +35,15 @@ public static class TextComparison
                 var edit = lines[i++];
                 (edit.Kind == TextDifferenceKind.Removed ? before : after).Append(edit.Text);
             }
-            result.AddRange(Diff(Elements(before.ToString()), Elements(after.ToString())));
+            // Retain all input, but avoid allocating one string per grapheme for huge
+            // changed regions. Large replacements can be highlighted as whole blocks.
+            if (before.Length == 0 || after.Length == 0 || (long)before.Length + after.Length > MaxRefinementCharacters)
+            {
+                if (before.Length > 0 && after.Length > 0) coarse = true;
+                if (before.Length > 0) result.Add(new(TextDifferenceKind.Removed, before.ToString()));
+                if (after.Length > 0) result.Add(new(TextDifferenceKind.Added, after.ToString()));
+            }
+            else result.AddRange(Diff(Elements(before.ToString()), Elements(after.ToString())));
         }
         return new(result.AsReadOnly(), coarse);
 
