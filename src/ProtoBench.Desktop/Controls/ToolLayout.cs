@@ -211,15 +211,20 @@ public static class ToolLayout
         var page = new Grid { Margin = new Thickness(12), RowSpacing = 8 };
         var heading = Ui.Heading(title);
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         page.Children.Add(heading);
-        var description = Ui.Text(subtitle);
-        Grid.SetRow(description, 1); page.Children.Add(description);
+        var firstContentRow = 1;
+        if (!string.IsNullOrEmpty(subtitle))
+        {
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var description = Ui.Text(subtitle);
+            Grid.SetRow(description, 1); page.Children.Add(description);
+            firstContentRow = 2;
+        }
         for (var i = 0; i < children.Length; i++)
         {
             page.RowDefinitions.Add(new RowDefinition { Height = i == 0 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             var child = i == 0 && children[i] is not WorkspaceGrid ? Scroll(children[i]) : children[i];
-            if (child is FrameworkElement element) Grid.SetRow(element, i + 2);
+            if (child is FrameworkElement element) Grid.SetRow(element, i + firstContentRow);
             page.Children.Add(child);
         }
         page.SizeChanged += (_, _) =>

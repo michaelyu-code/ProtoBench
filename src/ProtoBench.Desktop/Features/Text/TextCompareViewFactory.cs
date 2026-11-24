@@ -10,69 +10,11 @@ using ProtoBench.Utilities.Text;
 
 namespace ProtoBench.Desktop.Features.Text;
 
-public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspaceViewFactory
+public sealed partial class TextCompareViewFactory(FileDialogService dialogs) : IWorkspaceViewFactory
 {
     public string ToolId => "text-compare";
 
-    public FrameworkElement Create(ToolWorkspace workspace)
-    {
-        var vm = (TextCompareWorkspace)workspace;
-        var exportFeedback = Ui.Text("");
-        var export = ComparisonReportExport.CreateButton(vm, dialogs, () => vm.HasResult,
-            vm.CreateDifferencesReport, "text-compare-differences", exportFeedback);
-        ToolTipService.SetToolTip(export, "Save an HTML report with highlighted additions and removals.");
-        var original = new ComparisonEditor("Original text · removals in red", () => vm.Original, text => vm.Original = text);
-        var modified = new ComparisonEditor("Modified text · additions in green", () => vm.Modified, text => vm.Modified = text);
-        var wrap = new CheckBox { Content = "Wrap text" };
-        var unifiedScroll = new CheckBox { Content = "Unified scrolling", IsChecked = true };
-        original.ScrollChanged += source => { if (unifiedScroll.IsChecked == true) modified.SyncScrollFrom(source); };
-        modified.ScrollChanged += source => { if (unifiedScroll.IsChecked == true) original.SyncScrollFrom(source); };
-        unifiedScroll.Checked += (_, _) => modified.SyncScrollFrom(original);
-        ToolTipService.SetToolTip(unifiedScroll, "Scroll both texts together. Untick to scroll each pane independently.");
-        void SetWrapping() { original.SetWrapping(wrap.IsChecked == true); modified.SetWrapping(wrap.IsChecked == true); }
-        wrap.Checked += (_, _) => SetWrapping();
-        wrap.Unchecked += (_, _) => SetWrapping();
-        vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(vm.Original)) original.SyncText();
-            if (e.PropertyName == nameof(vm.Modified)) modified.SyncText();
-            if (e.PropertyName != nameof(vm.Result)) return;
-            original.Highlight(vm.Result, TextDifferenceKind.Removed);
-            modified.Highlight(vm.Result, TextDifferenceKind.Added);
-        };
-        var panes = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
-        panes.Children.Add(original.Pane);
-        panes.Children.Add(modified.Pane);
-        bool? stacked = null;
-        void Reflow()
-        {
-            var narrow = panes.ActualWidth < 620;
-            if (stacked == narrow) return;
-            stacked = narrow;
-            panes.ColumnDefinitions.Clear();
-            panes.RowDefinitions.Clear();
-            panes.ColumnDefinitions.Add(new ColumnDefinition());
-            panes.RowDefinitions.Add(new RowDefinition());
-            if (narrow) panes.RowDefinitions.Add(new RowDefinition());
-            else panes.ColumnDefinitions.Add(new ColumnDefinition());
-            Grid.SetColumn(modified.Pane, narrow ? 0 : 1);
-            Grid.SetRow(modified.Pane, narrow ? 1 : 0);
-        }
-        panes.SizeChanged += (_, _) => Reflow();
-        Reflow();
-        var content = new Grid { RowSpacing = 8 };
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        content.Children.Add(Ui.Row(Ui.Primary(new Button { Content = "Compare text", Command = vm.CompareCommand }),
-            new Button { Content = "Swap", Command = vm.SwapCommand }, new Button { Content = "Clear", Command = vm.ClearCommand },
-            export, wrap, unifiedScroll, Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
-        var feedback = ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Error)), Ui.BoundText(vm, nameof(vm.Summary)), exportFeedback);
-        Grid.SetRow(feedback, 1); content.Children.Add(feedback);
-        Grid.SetRow(panes, 2); content.Children.Add(panes);
-        return ToolLayout.FittedPage(vm.Title, "Edit and compare both texts here. Red = removed; green = added.", content,
-            ToolLayout.Help(Ui.Text("Paste the original and modified text, then select Compare text. Differences are highlighted directly in the editable inputs. Both panes fill the available space, with line numbers for each actual text line. Unified scrolling starts checked and moves both panes together vertically and horizontally. Untick it to scroll each pane independently; ticking it again aligns the modified pane with the original. Select Wrap text to wrap long lines in both editors; each wrapped continuation shows a dot (.) in the line-number gutter. Wrapping only changes the display. Comparison is case-sensitive and includes whitespace. The editor uses a single paragraph mark for each line ending. Emoji and combining characters stay together. There is no fixed character or line limit per input. Large changes may be highlighted as whole blocks. Editing either input clears the previous highlights; select Compare text to refresh them.")));
-    }
+    public FrameworkElement Create(ToolWorkspace workspace) => new ComparisonSurface((TextCompareWorkspace)workspace, dialogs).Root;
 
     private sealed class ComparisonEditor : RichEditBox
     {
@@ -80,8 +22,14 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
         private readonly Action<string> write;
         private readonly ITextCharacterFormat normal;
         private bool updating;
+        private readonly LinkedList<(string Text, int Caret)> undo = [], redo = [];
+        private bool restoringHistory;
+        private long lastEdit;
         private string current = "";
         private readonly Canvas numbers = new() { IsHitTestVisible = false, Width = 44 };
+        private readonly Canvas whitespace = new() { IsHitTestVisible = false };
+        private HashSet<int> selectedLines = [];
+        public bool ShowWhitespace { get; set; }
         private readonly List<int> lineStarts = [0];
         private ScrollViewer? viewport;
         private bool syncingScroll;
@@ -90,6 +38,54 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
         private double lastTextTop = double.NaN;
         private double NumberFontSize => normal.Size * 96d / 72d;
         public Grid Pane { get; } = new() { RowSpacing = 6 };
+        public Func<string, string>? NormalizeEdit { get; set; }
+        public double LineHeight
+        {
+            get
+            {
+                Document.GetRange(0, 0).GetRect(PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var rect, out _);
+                return rect.Height > 0 ? rect.Height : NumberFontSize * 1.2;
+            }
+        }
+        public int Position(ComparisonLine? line) => line is null ? current.Length : lineStarts[Math.Min(line.Number - 1, lineStarts.Count - 1)];
+        public double TextTop(int position)
+        {
+            Document.GetRange(position, position).GetPoint(HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Top,
+                PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var point);
+            return point.Y - (viewport?.VerticalOffset ?? 0);
+        }
+        public double LineTop(ComparisonLine? line) => TextTop(Position(line));
+        public void ResetSpacing() => Document.GetRange(0, int.MaxValue).ParagraphFormat.SpaceBefore = 0;
+        public void AddSpace(int position, double pixels)
+        {
+            if (pixels > .5) Document.GetRange(position, position).ParagraphFormat.SpaceBefore = (float)(pixels * .75);
+        }
+        public void SetTailSpace(double pixels)
+        {
+            var bottom = 8 + Math.Max(0, pixels);
+            if (Math.Abs(Padding.Bottom - bottom) > .1) Padding = new Thickness(Padding.Left, Padding.Top, Padding.Right, bottom);
+        }
+        public void MarkSelected(IEnumerable<int> lines) { selectedLines = lines.ToHashSet(); ScheduleNumbers(); }
+        public void Reveal(ComparisonLine? line)
+        {
+            if (viewport is null) return;
+            viewport.ChangeView(null, Math.Clamp(viewport.VerticalOffset + LineTop(line) - LineHeight * 2, 0, viewport.ScrollableHeight), null, true);
+            ScheduleNumbers();
+        }
+        public bool Find(string text, bool backwards = false)
+        {
+            if (text.Length == 0) return false;
+            var from = backwards ? Math.Max(0, Document.Selection.StartPosition - 1) : Document.Selection.EndPosition;
+            var found = backwards ? current.LastIndexOf(text, Math.Min(from, Math.Max(0, current.Length - 1)), StringComparison.OrdinalIgnoreCase)
+                : current.IndexOf(text, Math.Min(from, current.Length), StringComparison.OrdinalIgnoreCase);
+            if (found < 0) found = current.IndexOf(text, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) return false;
+            Document.Selection.SetRange(found, found + text.Length);
+            Document.Selection.ScrollIntoView(PointOptions.None);
+            return true;
+        }
+        public void ReplaceSelection(string replacement) => Document.Selection.SetText(TextSetOptions.None, replacement.ReplaceLineEndings("\r"));
+        public string SelectedText { get { Document.Selection.GetText(TextGetOptions.None, out var text); return text; } }
 
         public ComparisonEditor(string title, Func<string> read, Action<string> write)
         {
@@ -115,6 +111,7 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
             Pane.Children.Add(Ui.Text(title));
             var body = new Grid();
             body.Children.Add(this);
+            body.Children.Add(whitespace);
             numbers.HorizontalAlignment = HorizontalAlignment.Left;
             body.Children.Add(numbers);
             Grid.SetRow(body, 1); Pane.Children.Add(body);
@@ -134,6 +131,15 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
             };
             SizeChanged += (_, _) => ScheduleNumbers();
             SyncText();
+            PreviewKeyDown += (_, e) =>
+            {
+                if (e.Key is not (Windows.System.VirtualKey.Z or Windows.System.VirtualKey.Y)) return;
+                var control = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+                if (!control.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
+                var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+                RestoreHistory(e.Key == Windows.System.VirtualKey.Y || shift);
+                e.Handled = true;
+            };
             TextChanged += (_, _) =>
             {
                 if (updating) return;
@@ -141,9 +147,10 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
                 // RichEdit always includes one final, implicit paragraph mark.
                 if (text.EndsWith('\r')) text = text[..^1];
                 if (text == current) return;
+                RecordUndo(text, false);
                 current = text;
                 UpdateLineStarts();
-                write(text);
+                write(NormalizeEdit?.Invoke(text) ?? text);
             };
         }
 
@@ -151,9 +158,47 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
         {
             var text = read().ReplaceLineEndings("\r");
             if (text == current) return;
+            RecordUndo(text, true);
             updating = true;
             try { Document.SetText(TextSetOptions.None, text); current = text; UpdateLineStarts(); }
             finally { updating = false; }
+        }
+
+        // Native RichEdit undo includes decoration changes. Keep a bounded text-only history
+        // so Ctrl+Z always undoes an edit rather than highlighting or spacer formatting.
+        private void RecordUndo(string next, bool separate)
+        {
+            if (restoringHistory) return;
+            var now = Environment.TickCount64;
+            if (separate || now - lastEdit > 750 || Math.Abs(next.Length - current.Length) != 1 || undo.Count == 0)
+            {
+                undo.AddLast((current, Math.Min(Document.Selection.StartPosition, current.Length)));
+                Trim(undo);
+            }
+            redo.Clear(); lastEdit = now;
+        }
+        private void RestoreHistory(bool forward)
+        {
+            var source = forward ? redo : undo; var target = forward ? undo : redo;
+            if (source.Last is not { } last) return;
+            var snapshot = last.Value; source.RemoveLast();
+            target.AddLast((current, Document.Selection.StartPosition)); Trim(target);
+            updating = restoringHistory = true;
+            try
+            {
+                Document.SetText(TextSetOptions.None, snapshot.Text); current = snapshot.Text;
+                UpdateLineStarts();
+                var caret = Math.Clamp(snapshot.Caret, 0, current.Length);
+                Document.Selection.SetRange(caret, caret);
+                write(NormalizeEdit?.Invoke(current) ?? current);
+            }
+            finally { updating = restoringHistory = false; lastEdit = 0; }
+        }
+        private static void Trim(LinkedList<(string Text, int Caret)> history)
+        {
+            long characters = history.Sum(item => (long)item.Text.Length);
+            while (history.Count > 1 && (history.Count > 32 || characters > 8_000_000))
+            { characters -= history.First!.Value.Text.Length; history.RemoveFirst(); }
         }
 
         public void SetWrapping(bool enabled)
@@ -185,6 +230,7 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
 
         private void Rendering(object? sender, object args)
         {
+            if (!IsLoaded || Pane.Visibility != Visibility.Visible) return;
             // RichEdit scrolls its native text surface independently of XAML's ScrollViewer.
             // Observe its text position so wheel, scrollbar and caret scrolling all update the gutter.
             Document.GetRange(0, 0).GetPoint(HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Top,
@@ -229,9 +275,11 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
 
         private void DrawNumbers()
         {
-            if (!IsLoaded || ActualHeight <= 0) return;
+            if (!IsLoaded || Pane.Visibility != Visibility.Visible || ActualHeight <= 0) return;
             numbers.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, numbers.ActualWidth, ActualHeight) };
             numbers.Children.Clear();
+            whitespace.Children.Clear();
+            whitespace.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, ActualWidth, ActualHeight) };
             // RichEdit's client coordinates start inside the ScrollViewer's padding.
             var contentTop = viewport is null ? 0 : viewport.TransformToVisual(numbers)
                 .TransformPoint(new Windows.Foundation.Point(0, viewport.Padding.Top)).Y;
@@ -263,7 +311,9 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
                 var label = new TextBlock
                 {
                     Text = marker, FontFamily = FontFamily, FontSize = NumberFontSize,
-                    Opacity = .65, TextAlignment = TextAlignment.Right, Width = numbers.Width - 10
+                    Opacity = logicalLine >= 0 && selectedLines.Contains(logicalLine + 1) ? 1 : .65,
+                    FontWeight = logicalLine >= 0 && selectedLines.Contains(logicalLine + 1) ? FontWeights.Bold : FontWeights.Normal,
+                    TextAlignment = TextAlignment.Right, Width = numbers.Width - 10
                 };
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(label, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                 numbers.Children.Add(label);
@@ -273,9 +323,25 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
                 Canvas.SetTop(label, baseline - label.BaselineOffset);
                 if (visualLine.Move(TextRangeUnit.Line, 1) == 0 || visualLine.StartPosition <= position) break;
             }
+            if (!ShowWhitespace) return;
+            var count = 0;
+            var contentLeft = viewport is null ? 0 : viewport.TransformToVisual(whitespace).TransformPoint(new Windows.Foundation.Point(viewport.Padding.Left, 0)).X;
+            for (var i = low; i < current.Length && i - low < 20_000 && count < 1500; i++)
+            {
+                if (Baseline(i) - NumberFontSize > ActualHeight) break;
+                var marker = current[i] switch { ' ' => "·", '\t' => "→", '\r' => "¶", _ => null };
+                if (marker is null) continue;
+                Document.GetRange(i, i).GetPoint(HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Top,
+                    PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var point);
+                var x = contentLeft + point.X - (viewport?.HorizontalOffset ?? 0);
+                if (x < numbers.Width || x >= ActualWidth) continue;
+                var label = new TextBlock { Text = marker, FontFamily = FontFamily, FontSize = NumberFontSize, Opacity = .45 };
+                whitespace.Children.Add(label); Canvas.SetLeft(label, x); Canvas.SetTop(label, contentTop + point.Y - (viewport?.VerticalOffset ?? 0));
+                count++;
+            }
         }
 
-        public void Highlight(TextComparisonResult? result, TextDifferenceKind changed)
+        public void Highlight(TextComparisonResult? result, TextDifferenceKind changed, TextCompareDocument? alignment = null)
         {
             updating = true;
             Document.BatchDisplayUpdates();
@@ -284,7 +350,21 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
                 Document.GetRange(0, int.MaxValue).CharacterFormat = normal;
                 Document.Selection.CharacterFormat = normal;
                 if (result is null) return;
+                // Exclude paragraph marks: colouring one also colours its alignment gap.
+                var intervals = alignment?.Rows.Where(r => r.IsChange)
+                    .Select(r => changed == TextDifferenceKind.Removed ? r.Left : r.Right)
+                    .Where(line => line is not null && line.Content.Length > 0)
+                    .Select(line => (Start: Position(line), End: Position(line) + line!.Content.Length)).ToArray();
+                if (intervals is not null)
+                    foreach (var interval in intervals)
+                    {
+                        var format = Document.GetRange(interval.Start, interval.End).CharacterFormat;
+                        format.BackgroundColor = changed == TextDifferenceKind.Removed
+                            ? Windows.UI.Color.FromArgb(255, 255, 237, 237) : Windows.UI.Color.FromArgb(255, 231, 247, 234);
+                        format.ForegroundColor = Colors.Black;
+                    }
                 var offset = 0;
+                var intervalIndex = 0;
                 foreach (var difference in result.Differences)
                 {
                     if (difference.Kind != TextDifferenceKind.Equal && difference.Kind != changed) continue;
@@ -292,12 +372,23 @@ public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspa
                     var length = difference.Text.ReplaceLineEndings("\r").Length;
                     if (difference.Kind == changed)
                     {
-                        var format = Document.GetRange(offset, offset + length).CharacterFormat;
-                        format.BackgroundColor = changed == TextDifferenceKind.Removed
-                            ? Windows.UI.Color.FromArgb(255, 255, 210, 210) : Windows.UI.Color.FromArgb(255, 196, 240, 205);
-                        format.ForegroundColor = Colors.Black;
+                        if (intervals is null) Paint(offset, offset + length);
+                        else
+                        {
+                            while (intervalIndex < intervals.Length && intervals[intervalIndex].End <= offset) intervalIndex++;
+                            for (var i = intervalIndex; i < intervals.Length && intervals[i].Start < offset + length; i++)
+                                Paint(Math.Max(offset, intervals[i].Start), Math.Min(offset + length, intervals[i].End));
+                        }
                     }
                     offset += length;
+                }
+                void Paint(int start, int end)
+                {
+                    if (end <= start) return;
+                    var format = Document.GetRange(start, end).CharacterFormat;
+                    format.BackgroundColor = changed == TextDifferenceKind.Removed
+                        ? Windows.UI.Color.FromArgb(255, 255, 195, 195) : Windows.UI.Color.FromArgb(255, 173, 231, 185);
+                    format.ForegroundColor = Colors.Black;
                 }
             }
             finally { Document.ApplyDisplayUpdates(); updating = false; ScheduleNumbers(); }

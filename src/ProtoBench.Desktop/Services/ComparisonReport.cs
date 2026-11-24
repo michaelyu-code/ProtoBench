@@ -27,9 +27,31 @@ public static class ComparisonReport
         return report.Append("</body></html>").ToString();
     }
 
-    public static string Text(string summary, TextComparisonResult result)
+    public static string Text(string summary, TextComparisonResult result, TextCompareDocument? alignment = null, TextCompareOptions? options = null)
     {
         var report = Start("Text Compare differences report", summary);
+        if (alignment is not null && options is { ActiveCount: > 0 })
+        {
+            var rules = new List<string>();
+            if (options.IgnoreCase) rules.Add("ignore case");
+            if (options.IgnoreWhitespace) rules.Add("ignore whitespace");
+            if (options.IgnoreBlankLines) rules.Add("ignore blank lines");
+            report.Append($"<p>Rules: {Encode(string.Join(", ", rules))}. Ignored differences are shown without highlighting. Both original inputs are retained below.</p>");
+            report.Append("<table><thead><tr><th>Original line</th><th>Original</th><th>Modified line</th><th>Modified</th></tr></thead><tbody>");
+            foreach (var row in alignment.Rows)
+            {
+                report.Append($"<tr><td>{row.Left?.Number}</td><td><pre>");
+                if (row.IsChange && row.Left is not null) report.Append("<del>");
+                report.Append(Encode(row.Left?.Text ?? ""));
+                if (row.IsChange && row.Left is not null) report.Append("</del>");
+                report.Append($"</pre></td><td>{row.Right?.Number}</td><td><pre>");
+                if (row.IsChange && row.Right is not null) report.Append("<ins>");
+                report.Append(Encode(row.Right?.Text ?? ""));
+                if (row.IsChange && row.Right is not null) report.Append("</ins>");
+                report.Append("</pre></td></tr>");
+            }
+            return report.Append("</tbody></table></body></html>").ToString();
+        }
         report.Append("<p>Removed text is red and struck through. Added text is green and underlined. Unchanged text provides context.</p><pre class=\"diff\">");
         foreach (var difference in result.Differences)
         {

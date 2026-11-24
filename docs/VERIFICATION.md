@@ -1,5 +1,21 @@
 # Verification record
 
+## Text Compare interface and reconciliation — 24 November 2026
+
+Previous/Next and the current-change indicator share the bottom summary row with section/line counts. Find/replace sits in the main toolbar, removing the extra top navigation row. Footer controls wrap in narrow layouts.
+
+The overview strip follows the text editor's actual bounds below the file header (or the filtered review's list bounds), and clips marks to that area. Header reflow and editor resizing update its bounds.
+
+Short documents now keep overview marks at line height instead of stretching them across the available editor height; long documents still compress to fit. Click-to-jump uses the same scale. Bounds are rechecked after layout settles. A live check reproduced the two-line numeric example with only the first line changed, and verified a compact blue marker aligned with the text box in both normal and maximized windows. The isolated desktop build passed with zero warnings/errors.
+
+Added source-preserving line alignment, native editor spacer gaps, selected-change navigation (F7 / Shift+F7), a clickable overview, copy-change controls, Undo copy, debounced automatic comparison and cancellation of stale work. Rules ignore case, whitespace or blank lines without altering either input. Rules-aware HTML reports retain both inputs and highlight meaningful differences. View groups wrapping, scroll synchronization, whitespace markers and virtualized differences-only / three-line context review. Filtered review is read-only; All lines retains both editable native text panes. Ctrl+Z / Ctrl+Y use bounded text-only history so decoration changes do not consume undo steps.
+
+Added per-pane Open, Save as, file drop and Copy, filename/unsaved indicators, strict encoding/BOM detection, explicit encoding selection and newline conversion. File writes use the existing atomic writer. Mixed line endings round-trip untouched until editing; edits use the first convention. Find/replace searches either full input with case-insensitive literal matching.
+
+The Utilities suite passed 347 tests and Application passed 289 tests; the existing opt-in 2 GiB test was skipped. Coverage includes random/repeated-line alignment and source reconstruction, insertions/deletions, Unicode separators, bounded fallback, copy ranges in both directions, undo after recomparison/rule changes, rule-aware reports, malformed encodings and exact UTF-8/16/32 BOM/newline round trips. The desktop x64 Debug build passed with zero warnings/errors. Git whitespace checks passed.
+
+Live Windows checks exercised editable alignment, a wrapped replacement with an inserted line, automatic refresh, differences-only review with character emphasis, change navigation, copying the selected change, Undo copy and Ctrl+Z / Ctrl+Y after highlighting. Native hidden-paragraph formatting was rejected by the editor; filtered review therefore uses a separate virtualized surface and leaves source editors untouched. File-picker saves, drag/drop, find/replace and narrow-window resizing remain manual interaction checks.
+
 ## Comparison report exports — 24 November 2026
 
 Bumped the package/file version to 2.0.22 while retaining assembly identity 2.0.0.0.
