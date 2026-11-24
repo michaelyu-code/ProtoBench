@@ -6,6 +6,7 @@ using ProtoBench.Core.Documents;
 using ProtoBench.Parsing;
 using ProtoBench.Parsing.Abstractions;
 using ProtoBench.Parsing.Registry;
+using ProtoBench.Desktop.Services;
 
 namespace ProtoBench.Desktop.Features.Parsers;
 
@@ -83,6 +84,13 @@ public sealed class MessageCompareWorkspace : ToolWorkspace
     public bool DifferencesOnly { get => differencesOnly; set { if (SetProperty(ref differencesOnly, value)) OnPropertyChanged(nameof(VisibleRows)); } }
     public IAsyncRelayCommand CompareCommand { get; }
     public IRelayCommand ClearCommand { get; }
+
+    public string CreateDifferencesReport()
+    {
+        if (Rows.Count == 0) throw new InvalidOperationException("Compare the messages before exporting a report.");
+        var scope = $"Current filters: Request = {ShowRequest}; Reply = {ShowReply}; Show subfields = {ShowSubfields}; Show only differences = {DifferencesOnly}. Selected fields: {string.Join(", ", Fields.Where(field => field.IsSelected).Select(field => field.Path))}.";
+        return ComparisonReport.Message(Summary, SelectedFormatId ?? "", scope, VisibleRows, Diagnostics);
+    }
 
     public void SelectAllFields(bool selected)
     {

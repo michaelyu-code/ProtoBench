@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Input;
 using ProtoBench.Application.Workspaces;
 using ProtoBench.Utilities.Text;
+using ProtoBench.Desktop.Services;
 
 namespace ProtoBench.Desktop.Features.Text;
 
@@ -17,6 +18,8 @@ public sealed class TextCompareWorkspace : ToolWorkspace
     public string Summary { get => summary; private set => SetProperty(ref summary, value); }
     public TextComparisonResult? Result { get => result; private set { if (SetProperty(ref result, value)) OnPropertyChanged(nameof(HasResult)); } }
     public bool HasResult => Result is not null;
+    public string CreateDifferencesReport() => ComparisonReport.Text(Summary,
+        Result ?? throw new InvalidOperationException("Compare the texts before exporting a report."));
     public IAsyncRelayCommand CompareCommand { get; }
     public IRelayCommand ClearCommand { get; }
     public IRelayCommand SwapCommand { get; }

@@ -15,6 +15,29 @@ public sealed class MessageCompareWorkspaceTests
         ParserDefinition.FromJson(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "definitions/parsers/synthetic-delimited.json"))))]));
 
     [Fact]
+    public async Task ExportsCurrentFiltersAndRejectsStaleResults()
+    {
+        using var vm = Workspace();
+        Assert.Throws<InvalidOperationException>(() => vm.CreateDifferencesReport());
+        vm.SelectedFormatId = "synthetic-delimited";
+        vm.Message1 = "SYN|request|1\nSYN|reply|2";
+        vm.Message2 = "SYN|request|3\nSYN|reply|4";
+        await vm.CompareCommand.ExecuteAsync(null);
+        vm.ShowRequest = false;
+        var report = vm.CreateDifferencesReport();
+        Assert.Contains("Reply / count", report);
+        Assert.DoesNotContain("Request / count", report);
+        Assert.DoesNotContain("<td>Match</td>", report);
+        Assert.Contains("synthetic-delimited", report);
+        vm.DifferencesOnly = false;
+        Assert.Contains("<td>Match</td>", vm.CreateDifferencesReport());
+        vm.SelectAllFields(false);
+        Assert.Contains("No rows match the current filters.", vm.CreateDifferencesReport());
+        vm.Message2 = "changed";
+        Assert.Throws<InvalidOperationException>(() => vm.CreateDifferencesReport());
+    }
+
+    [Fact]
     public async Task ComparesUsingSelectedSpecAndClearsStaleResults()
     {
         using var vm = Workspace();

@@ -8,13 +8,17 @@ using ProtoBench.Desktop.Services;
 
 namespace ProtoBench.Desktop.Features.Parsers;
 
-public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
+public sealed class MessageCompareViewFactory(FileDialogService dialogs) : IWorkspaceViewFactory
 {
     public string ToolId => "message-compare";
 
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (MessageCompareWorkspace)workspace;
+        var exportFeedback = Ui.Text("");
+        var export = ComparisonReportExport.CreateButton(vm, dialogs, () => vm.Rows.Count > 0,
+            vm.CreateDifferencesReport, "message-compare-differences", exportFeedback);
+        ToolTipService.SetToolTip(export, "Save an HTML report of the current results, using the selected message, field, subfield and difference filters.");
         var required = new RequiredInputs(vm);
         var spec = new ComboBox
         {
@@ -124,7 +128,7 @@ public sealed class MessageCompareViewFactory : IWorkspaceViewFactory
         results.Children.Add(ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Summary)),
             Ui.Row(MessageFilter("Request", nameof(vm.ShowRequest)), MessageFilter("Reply", nameof(vm.ShowReply)),
                 onlyDifferences, MessageFilter("Show subfields", nameof(vm.ShowSubfields))),
-            fieldPicker,
+            Ui.Row(fieldPicker, export), exportFeedback,
             Ui.Text("Yellow edge = changed · Purple edge = missing. Red / green marks the differing text span.", 13)));
         var diagnostics = new Expander
         {

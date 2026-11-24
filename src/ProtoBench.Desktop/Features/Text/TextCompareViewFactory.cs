@@ -10,13 +10,17 @@ using ProtoBench.Utilities.Text;
 
 namespace ProtoBench.Desktop.Features.Text;
 
-public sealed class TextCompareViewFactory : IWorkspaceViewFactory
+public sealed class TextCompareViewFactory(FileDialogService dialogs) : IWorkspaceViewFactory
 {
     public string ToolId => "text-compare";
 
     public FrameworkElement Create(ToolWorkspace workspace)
     {
         var vm = (TextCompareWorkspace)workspace;
+        var exportFeedback = Ui.Text("");
+        var export = ComparisonReportExport.CreateButton(vm, dialogs, () => vm.HasResult,
+            vm.CreateDifferencesReport, "text-compare-differences", exportFeedback);
+        ToolTipService.SetToolTip(export, "Save an HTML report with highlighted additions and removals.");
         var original = new ComparisonEditor("Original text · removals in red", () => vm.Original, text => vm.Original = text);
         var modified = new ComparisonEditor("Modified text · additions in green", () => vm.Modified, text => vm.Modified = text);
         var wrap = new CheckBox { Content = "Wrap text" };
@@ -62,8 +66,8 @@ public sealed class TextCompareViewFactory : IWorkspaceViewFactory
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         content.Children.Add(Ui.Row(Ui.Primary(new Button { Content = "Compare text", Command = vm.CompareCommand }),
             new Button { Content = "Swap", Command = vm.SwapCommand }, new Button { Content = "Clear", Command = vm.ClearCommand },
-            wrap, unifiedScroll, Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
-        var feedback = ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Error)), Ui.BoundText(vm, nameof(vm.Summary)));
+            export, wrap, unifiedScroll, Ui.Progress(vm), Ui.BoundText(vm, nameof(vm.Status))));
+        var feedback = ToolLayout.Stack(Ui.BoundText(vm, nameof(vm.Error)), Ui.BoundText(vm, nameof(vm.Summary)), exportFeedback);
         Grid.SetRow(feedback, 1); content.Children.Add(feedback);
         Grid.SetRow(panes, 2); content.Children.Add(panes);
         return ToolLayout.FittedPage(vm.Title, "Edit and compare both texts here. Red = removed; green = added.", content,

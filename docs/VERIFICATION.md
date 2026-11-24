@@ -1,5 +1,15 @@
 # Verification record
 
+## Comparison report exports — 24 November 2026
+
+Bumped the package/file version to 2.0.22 while retaining assembly identity 2.0.0.0.
+
+The full Release suite passed 789 tests (Utilities 333, Parsing 161, Application 284 and Generation 11); the existing opt-in large-file test was skipped. The desktop Release build passed with zero warnings/errors.
+
+Added Export differences report to Message Compare and Text Compare. Standalone HTML reports retain highlighted text changes or filtered message rows, with summaries, spec/filter scope and parser diagnostics where applicable. Report values are HTML-encoded, missing and empty values remain distinct, and exports capture the result before the save dialog opens. Buttons are disabled without a current comparison or during comparison/export, and cancellation and save errors are handled in the view.
+
+All 20 focused comparison-report and Message Compare workspace tests passed. Coverage includes active filters, identical/empty text, stale results, markup escaping, multiline values and missing/empty fields. The desktop Debug build passed with zero warnings/errors. Live save-dialog and browser/print layout checks remain manual.
+
 ## Version 2.0.21 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.21 while retaining SDK assembly identity 2.0.0.0. Text Compare now offers Unified scrolling, checked by default, with independent scrolling when unticked. Removed the 100,000-character limit from both editors and the comparison engine; large replacements use whole-block highlights without discarding input. Updated the README and tool help.
