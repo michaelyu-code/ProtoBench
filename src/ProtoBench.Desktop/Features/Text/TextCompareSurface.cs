@@ -562,6 +562,13 @@ public sealed partial class TextCompareViewFactory
                 endings.Items.Add(item);
             }
             formatMenu.Items.Add(endings); file.Format.Flyout = formatMenu;
+            foreach (var control in new Control[] { open, save, copy, file.Format })
+            {
+                control.FontSize = 13;
+                control.MinHeight = 28;
+                control.MinWidth = 0;
+                control.Padding = new Thickness(8, 3, 8, 3);
+            }
             ToolTipService.SetToolTip(file.Format, "Select encoding for BOM-less files and saving, or convert line endings. Files with a BOM use their declared encoding.");
             file.Label.Opacity = .65; file.Label.MaxWidth = 260; file.Label.TextTrimming = TextTrimming.CharacterEllipsis;
             editor.Pane.Children.Insert(0, ToolLayout.Stack(Ui.Row(originalHeading, file.Label), Ui.Row(open, save, copy, file.Format)));

@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.28 release checks — 25 November 2026
+
+Reduced the Open, Save as, Copy and encoding/newline controls above both Text Compare panes to 13-DIP text, a 28-DIP minimum height and smaller padding. Bumped package/file version to 2.0.28 while retaining assembly identity 2.0.0.0.
+
+The full Release suite passed 822 tests, with the existing opt-in 2 GiB test skipped. The x64 desktop Release build passed with zero warnings/errors and reports file version 2.0.28.0. All 13 release build-selection checks and `git diff --check` passed. Installer packaging and publication run in GitHub Actions using the exact tagged main-build artifacts.
+
 ## Version 2.0.27 release checks — 25 November 2026
 
 Bumped package/file version to 2.0.27 while retaining assembly identity 2.0.0.0. This release includes Text Compare paste-focus and redraw fixes, font-size selection with 12 as the default, position-aware overview navigation, faster scroll forwarding and linked line-number highlights.
