@@ -49,6 +49,8 @@ public sealed class TodoManager(ITodoStore store, TimeProvider? time = null)
         EnsureLoaded();
         if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Length > 200 || item.Notes.Length > 10000)
             throw new ArgumentException("A task needs a title of 1–200 characters; notes are limited to 10,000 characters.");
+        if (item.HighPriority && item.LowPriority || !Enum.IsDefined(item.CardColor))
+            throw new ArgumentException("Choose one priority and a supported card colour.");
         var index = data.Items.FindIndex(t => t.Id == item.Id);
         if (index < 0) throw new InvalidOperationException("The task was removed in another tab.");
         data.Items[index] = item;

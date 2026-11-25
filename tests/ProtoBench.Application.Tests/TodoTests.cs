@@ -87,6 +87,32 @@ public sealed class TodoTests
         store.Fail = false; tasks.RetrySave(); Assert.Empty(tasks.SaveError); Assert.True(store.Data.Items[0].NeedsAttention);
     }
     [Fact]
+    public void LegacyTasksKeepTheirPriorityAndDefaultColour()
+    {
+        var data = System.Text.Json.JsonSerializer.Deserialize<TodoData>("""
+            {"SchemaVersion":1,"Items":[{"Title":"Normal task"},{"Title":"Urgent task","HighPriority":true}]}
+            """)!;
+        Assert.False(data.Items[0].HighPriority);
+        Assert.True(data.Items[1].HighPriority);
+        Assert.All(data.Items, task => { Assert.False(task.LowPriority); Assert.Equal(TodoCardColor.Default, task.CardColor); });
+    }
+    [Fact]
+    public void PriorityAndColourSurviveUpdatesAndReload()
+    {
+        var store = new Store(); var tasks = new TodoManager(store); tasks.Load(); tasks.Add("Task");
+        var id = tasks.Items[0].Id;
+        tasks.Update(tasks.Get(id) with { LowPriority = true, CardColor = TodoCardColor.Purple });
+        tasks.Complete(id, true); tasks.Complete(id, false);
+        var reopened = new TodoManager(store); reopened.Load();
+        Assert.True(reopened.Get(id).LowPriority);
+        Assert.False(reopened.Get(id).HighPriority);
+        Assert.Equal(TodoCardColor.Purple, reopened.Get(id).CardColor);
+        reopened.Update(reopened.Get(id) with { HighPriority = true, LowPriority = false });
+        Assert.True(reopened.Get(id).HighPriority);
+        Assert.False(reopened.Get(id).LowPriority);
+        Assert.Throws<ArgumentException>(() => reopened.Update(reopened.Get(id) with { LowPriority = true }));
+    }
+    [Fact]
     public void JsonStoreRoundTripsAndPreservesMalformedFiles()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ProtoBench-todo-" + Guid.NewGuid().ToString("N"));
@@ -94,9 +120,10 @@ public sealed class TodoTests
         try
         {
             var path = Path.Combine(directory, "tasks.json"); var store = new JsonTodoStore(path);
-            var task = new TodoItem { Title = "Task", Steps = [new TodoStep(Guid.NewGuid(), "Verify")], Notes = "Notes", HighPriority = true };
+            var task = new TodoItem { Title = "Task", Steps = [new TodoStep(Guid.NewGuid(), "Verify")], Notes = "Notes", LowPriority = true, CardColor = TodoCardColor.Green };
             store.Save(new TodoData { Items = [task], RetentionDays = 14 });
             store.Save(store.Load()); var loaded = store.Load(); Assert.Equal(task.Title, loaded.Items[0].Title); Assert.Equal(14, loaded.RetentionDays); Assert.Single(loaded.Items[0].Steps);
+            Assert.True(loaded.Items[0].LowPriority); Assert.False(loaded.Items[0].HighPriority); Assert.Equal(TodoCardColor.Green, loaded.Items[0].CardColor);
             File.WriteAllText(path, "{ broken"); var manager = new TodoManager(store);
             Assert.ThrowsAny<Exception>(manager.Load); Assert.False(manager.IsLoaded); Assert.Throws<InvalidOperationException>(() => manager.Add("Task"));
             Assert.Equal("{ broken", File.ReadAllText(path)); Assert.Single(Directory.GetFiles(directory));

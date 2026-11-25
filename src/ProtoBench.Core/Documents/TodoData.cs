@@ -1,6 +1,7 @@
 namespace ProtoBench.Core.Documents;
 
 public sealed record TodoStep(Guid Id, string Text, bool Completed = false);
+public enum TodoCardColor { Default, Blue, Green, Yellow, Orange, Red, Purple, Pink }
 public sealed record TodoItem
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -8,6 +9,8 @@ public sealed record TodoItem
     public string Notes { get; init; } = "";
     public DateOnly? DueDate { get; init; }
     public bool HighPriority { get; init; }
+    public bool LowPriority { get; init; }
+    public TodoCardColor CardColor { get; init; }
     public DateTimeOffset? CompletedAt { get; init; }
     public List<TodoStep> Steps { get; init; } = [];
     public int TimeboxMinutes { get; init; } = 25;

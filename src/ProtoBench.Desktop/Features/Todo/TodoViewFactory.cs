@@ -227,7 +227,7 @@ internal sealed class TodoView : UserControl
         }
         list.Children.Add(new Border { Padding = new Thickness(10, 10, 10, 8), Child = Secondary(selectedView == 0 ? "Due today and overdue" : selectedView == 1 ? "Open tasks" : "Completed tasks") });
         var visible = Tasks.Items.Where(t => selectedView == 2 ? t.CompletedAt is not null :
-            t.CompletedAt is null && (selectedView == 1 || t.DueDate <= today)).OrderByDescending(t => t.HighPriority).ThenBy(t => t.DueDate).ToArray();
+            t.CompletedAt is null && (selectedView == 1 || t.DueDate <= today)).OrderByDescending(t => t.HighPriority).ThenBy(t => t.LowPriority).ThenBy(t => t.DueDate).ToArray();
         if (!visible.Any(t => t.Id == workspace.SelectedTask)) workspace.SelectedTask = visible.FirstOrDefault()?.Id;
         foreach (var task in visible)
         {
@@ -235,7 +235,7 @@ internal sealed class TodoView : UserControl
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(complete, "Complete " + task.Title);
             complete.Click += (_, _) => { Run(() => Tasks.Complete(task.Id, complete.IsChecked == true)); Refresh(true); };
             var subtitle = task.CompletedAt is { } at ? $"Completed {at.ToLocalTime():d}" :
-                (task.DueDate is { } due ? $"Due {due:d}" : "No due date") + (task.HighPriority ? " · High priority" : "") +
+                (task.DueDate is { } due ? $"Due {due:d}" : "No due date") + (task.HighPriority ? " · High priority" : task.LowPriority ? " · Low priority" : "") +
                 (task.NeedsAttention ? " · Time’s up" : "") + (task.Steps.Count > 0 ? $" · {task.Steps.Count(s => s.Completed)}/{task.Steps.Count} steps" : "");
             var open = new Button { Content = new StackPanel { Spacing = 5, Children = { Ui.Text(task.Title), Secondary(subtitle) } },
                 HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -252,6 +252,8 @@ internal sealed class TodoView : UserControl
                     BorderBrush="{(selectedRow ? "{ThemeResource AccentFillColorDefaultBrush}" : "Transparent")}"
                     Background="{(selectedRow ? "{ThemeResource SubtleFillColorSecondaryBrush}" : "Transparent")}" />
                 """);
+            if (CardColor(task.CardColor) is { } cardColor)
+                rowBorder.Background = new SolidColorBrush(cardColor) { Opacity = selectedRow ? .26 : .12 };
             rowBorder.Child = row; list.Children.Add(rowBorder);
         }
         if (visible.Length == 0) list.Children.Add(new Border { Padding = new Thickness(10, 24, 10, 24), Child = Secondary("No tasks in this view. Add a task above.") });
@@ -274,6 +276,17 @@ internal sealed class TodoView : UserControl
     {
         if (workspace.SelectedTask is { } id) Run(() => Tasks.Update(update(Tasks.Get(id))));
     }
+    private static Windows.UI.Color? CardColor(TodoCardColor color) => color switch
+    {
+        TodoCardColor.Blue => Windows.UI.Color.FromArgb(255, 59, 130, 246),
+        TodoCardColor.Green => Windows.UI.Color.FromArgb(255, 34, 197, 94),
+        TodoCardColor.Yellow => Windows.UI.Color.FromArgb(255, 234, 179, 8),
+        TodoCardColor.Orange => Windows.UI.Color.FromArgb(255, 249, 115, 22),
+        TodoCardColor.Red => Windows.UI.Color.FromArgb(255, 239, 68, 68),
+        TodoCardColor.Purple => Windows.UI.Color.FromArgb(255, 168, 85, 247),
+        TodoCardColor.Pink => Windows.UI.Color.FromArgb(255, 236, 72, 153),
+        _ => null
+    };
     private void QueueDraft(Guid id, string? title = null, string? notes = null)
     {
         if (!drafts.TryGetValue(id, out var draft)) drafts[id] = draft = new();
@@ -304,8 +317,22 @@ internal sealed class TodoView : UserControl
         due.DateChanged += (_, _) => Edit(t => t with { DueDate = due.Date is { } d ? DateOnly.FromDateTime(d.Date) : null });
         var clearDate = new HyperlinkButton { Content = "Clear due date", Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Left };
         clearDate.Click += (_, _) => due.Date = null;
-        var priority = new ComboBox { Header = "Priority", ItemsSource = new[] { "Normal", "High" }, SelectedIndex = task.HighPriority ? 1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-        priority.SelectionChanged += (_, _) => Edit(t => t with { HighPriority = priority.SelectedIndex == 1 });
+        var priority = new ComboBox { Header = "Priority", ItemsSource = new[] { "Low", "Normal", "High" }, SelectedIndex = task.HighPriority ? 2 : task.LowPriority ? 0 : 1, HorizontalAlignment = HorizontalAlignment.Stretch };
+        priority.SelectionChanged += (_, _) => Edit(t => t with { HighPriority = priority.SelectedIndex == 2, LowPriority = priority.SelectedIndex == 0 });
+        var colors = Enum.GetValues<TodoCardColor>();
+        var color = new ComboBox { Header = "Card colour", HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var choice in colors)
+        {
+            var swatch = new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(4),
+                BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Gray),
+                Background = new SolidColorBrush(CardColor(choice) ?? Microsoft.UI.Colors.Transparent) };
+            var option = new ComboBoxItem { Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                Children = { swatch, Ui.Text(choice.ToString()) } } };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(option, choice.ToString());
+            color.Items.Add(option);
+        }
+        color.SelectedIndex = Array.IndexOf(colors, task.CardColor);
+        color.SelectionChanged += (_, _) => { if (color.SelectedIndex >= 0) Edit(t => t with { CardColor = colors[color.SelectedIndex] }); };
         var minutes = new NumberBox { Header = "Minutes", Width = 110, Minimum = 1, Maximum = 480, Value = task.TimeboxMinutes,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, IsEnabled = task.CompletedAt is null && task.Deadline is null };
         minutes.ValueChanged += (_, _) => { if (double.IsFinite(minutes.Value) && minutes.Value == Math.Truncate(minutes.Value)) Run(() => Tasks.SetDuration(id, (int)minutes.Value)); PaintTimer(); };
@@ -323,6 +350,7 @@ internal sealed class TodoView : UserControl
         notes.TextChanged += (_, _) => QueueDraft(id, notes: notes.Text);
         notes.LostFocus += (_, _) => FlushDrafts();
         detail.Children.Add(title); detail.Children.Add(ToolLayout.Columns(190, due, priority)); detail.Children.Add(clearDate);
+        detail.Children.Add(color);
         var timer = Surface("CardStrokeColorDefaultBrush", true); timer.Padding = new Thickness(12);
         var timerHeading = new Grid { ColumnSpacing = 8 };
         timerHeading.ColumnDefinitions.Add(new()); timerHeading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });

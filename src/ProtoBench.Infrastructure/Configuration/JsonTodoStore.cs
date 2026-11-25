@@ -15,6 +15,7 @@ public sealed class JsonTodoStore(string path) : ITodoStore
             data.Items.Any(t => t is null || t.Id == Guid.Empty || string.IsNullOrWhiteSpace(t.Title) || t.Title.Length > 200 ||
                 t.Notes is null || t.Notes.Length > 10000 || t.Steps is null || t.Steps.Any(s => s is null || s.Text is null || s.Text.Length > 200) ||
                 t.TimeboxMinutes is < 1 or > 480 || !double.IsFinite(t.RemainingSeconds) || t.RemainingSeconds < 0 ||
+                (t.HighPriority && t.LowPriority) || !Enum.IsDefined(t.CardColor) ||
                 (t.CompletedAt is not null && t.Deadline is not null)) ||
             data.Items.Select(t => t.Id).Distinct().Count() != data.Items.Count || data.Items.Count(t => t.Deadline is not null) > 1)
             throw new InvalidDataException("Task storage is invalid or has an unsupported version. The file has been preserved.");

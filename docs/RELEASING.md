@@ -10,8 +10,8 @@ Set `Version` in `Directory.Build.props`, commit and push that change to `main`,
 
 ```powershell
 git push origin main
-git tag -a v2.0.29 -m "ProtoBench 2.0.29"
-git push origin v2.0.29
+git tag -a v2.0.30 -m "ProtoBench 2.0.30"
+git push origin v2.0.30
 ```
 
 Tags use `vMAJOR.MINOR.PATCH`, optionally with a prerelease suffix such as `v2.1.0-rc.1`, and must match the committed package version exactly. Tags containing a suffix create prereleases. Only successful `main` push builds of the exact tagged commit are eligible; pull-request packages and builds of other commits are excluded. Failed/cancelled builds and missing/expired packages stop the release. Artifacts are retained for 14 days; rerun the main build and then the failed release workflow when needed.
