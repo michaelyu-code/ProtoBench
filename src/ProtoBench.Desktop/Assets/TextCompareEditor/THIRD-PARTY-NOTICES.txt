@@ -1,0 +1,5 @@
+CodeMirror 5.65.21
+https://codemirror.net/5/
+MIT license; see vendor/codemirror-5.65.21/LICENSE.
+Vendored from the integrity-verified codemirror@5.65.21 npm distribution.
+The editor is loaded locally. No CDN, remote scripts, or network service is used.

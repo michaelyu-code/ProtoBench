@@ -41,6 +41,7 @@ public sealed partial class TextCompareViewFactory
         private readonly Dictionary<int, int> leftChanges = [], rightChanges = [];
         private IReadOnlyList<TextCompareOverviewMark> overviewMarks = [];
         private readonly FileSide leftFile = new(), rightFile = new();
+        private ComparisonEditor? scrollLeader;
         public FrameworkElement Root { get; }
 
         public ComparisonSurface(TextCompareWorkspace vm, FileDialogService dialogs)
@@ -82,8 +83,13 @@ public sealed partial class TextCompareViewFactory
             wrap.Click += (_, _) => { left.SetWrapping(wrap.IsChecked); right.SetWrapping(wrap.IsChecked); ApplyFilter(); ScheduleAlignment(); };
             sync.Click += (_, _) => { if (sync.IsChecked) right.SyncScrollFrom(left); };
             automatic.Click += (_, _) => { if (automatic.IsChecked) RequestCompare(); else debounce.Stop(); };
-            left.ScrollChanged += editor => { if (sync.IsChecked) right.SyncScrollFrom(editor); UpdateGutter(); };
-            right.ScrollChanged += editor => { if (sync.IsChecked) left.SyncScrollFrom(editor); UpdateGutter(); };
+            left.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) right.SyncScrollFrom(editor); UpdateGutter(); };
+            right.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) left.SyncScrollFrom(editor); UpdateGutter(); };
+            left.ViewportChanged += UpdateGutter; right.ViewportChanged += UpdateGutter;
+            left.GeometryChanged += ScheduleAlignment; right.GeometryChanged += ScheduleAlignment;
+            left.FindRequested += ShowFind; right.FindRequested += ShowFind;
+            left.NavigateRequested += Navigate; right.NavigateRequested += Navigate;
+            left.CopyRequested += Copy; right.CopyRequested += Copy;
             left.SelectionChanged += (_, _) => SelectAtCaret(left, true);
             right.SelectionChanged += (_, _) => SelectAtCaret(right, false);
             var more = new MenuFlyout();
@@ -92,7 +98,8 @@ public sealed partial class TextCompareViewFactory
             var export = ComparisonReportExport.CreateButton(vm, dialogs, () => vm.HasResult, vm.CreateDifferencesReport, "text-compare-differences", feedback);
             export.Content = "Export report…";
             findButton = Ui.Button("Find / replace…", ShowFind);
-            var toolbar = Ui.Row(Ui.Primary(new Button { Content = "Compare", Command = vm.CompareCommand }),
+            var toolbar = Ui.Row(Ui.Primary(Ui.AsyncButton("Compare", async () =>
+                { await Task.WhenAll(left.FlushAsync(), right.FlushAsync()); await vm.CompareCommand.ExecuteAsync(null); }, ex => feedback.Text = ex.Message)),
                 Ui.Button("Swap", Swap),
                 new DropDownButton { Content = "Rules", Flyout = rules }, ruleCount,
                 new DropDownButton { Content = "View", Flyout = view }, findButton, export,
@@ -141,6 +148,9 @@ public sealed partial class TextCompareViewFactory
                 if (active) return;
                 active = true; vm.PropertyChanged += Changed;
                 panes.LayoutUpdated += OverviewLayoutUpdated;
+                left.SyncText(); right.SyncText();
+                left.Highlight(vm.Result, TextDifferenceKind.Removed, vm.Alignment);
+                right.Highlight(vm.Result, TextDifferenceKind.Added, vm.Alignment);
                 Refresh(); ApplyFilter(); ScheduleAlignment();
                 Root.DispatcherQueue.TryEnqueue(UpdateOverviewBounds);
                 if (!vm.HasResult && (vm.Original.Length > 0 || vm.Modified.Length > 0)) RequestCompare();
@@ -200,13 +210,14 @@ public sealed partial class TextCompareViewFactory
             finally { applying = false; }
             UpdateGutter();
         }
-        private void Copy(bool toRight)
+        private async void Copy(bool toRight)
         {
-            vm.CopyChange(toRight); RequestCompare(true);
+            try { await Task.WhenAll(left.FlushAsync(), right.FlushAsync()); vm.CopyChange(toRight); RequestCompare(true); }
+            catch (Exception ex) { feedback.Text = ex.Message; }
         }
         private void SelectAtCaret(ComparisonEditor editor, bool isLeft)
         {
-            if (applying || editor.IsDecorating || vm.Alignment is null) return;
+            if (applying || vm.Alignment is null) return;
             if ((isLeft ? leftChanges : rightChanges).TryGetValue(editor.CaretLine, out var change)) vm.SelectedChange = change;
         }
         private void Refresh()
@@ -228,6 +239,7 @@ public sealed partial class TextCompareViewFactory
             navigation.Text = vm.Alignment is null ? "Compare to find changes" : vm.Navigation;
             ruleCount.Text = vm.Options.ActiveCount == 0 ? "" : $"{vm.Options.ActiveCount} ignore rules active";
             undo.Visibility = vm.CanUndoCopy ? Visibility.Visible : Visibility.Collapsed;
+            narrowCopyLeft.Visibility = narrowCopyRight.Visibility = stacked || contextRadius >= 0 ? Visibility.Visible : Visibility.Collapsed;
             var selectedRows = vm.Alignment is { } aligned && vm.SelectedChange >= 0 && vm.SelectedChange < aligned.Changes.Count
                 ? aligned.Rows.Skip(aligned.Changes[vm.SelectedChange].FirstRow).Take(aligned.Changes[vm.SelectedChange].RowCount).ToArray() : [];
             left.MarkSelected(selectedRows.Where(r => r.Left is not null).Select(r => r.Left!.Number));
@@ -358,85 +370,19 @@ public sealed partial class TextCompareViewFactory
         }
         private async Task AlignEditors()
         {
-            var version = alignmentVersion;
-            applying = true;
-            try
+            if (stacked || contextRadius >= 0 || vm.Alignment is not { } aligned)
             {
-                left.ResetSpacing(); right.ResetSpacing();
-                left.SetTailSpace(0); right.SetTailSpace(0);
-                if (stacked || contextRadius >= 0 || vm.Alignment is not { } aligned) return;
-                var leftHeight = left.LineHeight; var rightHeight = right.LineHeight;
-                // Measure in document coordinates. Each editor may currently be scrolled
-                // to a different position, including an empty pane that cannot scroll.
-                if (!wrap.IsChecked)
-                {
-                    var spacing = TextCompareSpacing.Create(aligned, leftHeight, rightHeight);
-                    var batch = System.Diagnostics.Stopwatch.StartNew();
-                    foreach (var (editor, spaces) in new[] { (left, spacing.Left), (right, spacing.Right) })
-                        foreach (var space in spaces)
-                        {
-                            if (!active || version != alignmentVersion) return;
-                            editor.AddSpace(editor.Position(space.Line), space.Pixels);
-                            if (batch.ElapsedMilliseconds >= 8)
-                            {
-                                await editor.YieldToInput(); batch.Restart();
-                            }
-                        }
-                    if (!active || version != alignmentVersion) return;
-                    SetTailSpace(left, spacing.Height, leftHeight);
-                    SetTailSpace(right, spacing.Height, rightHeight);
-                    if (sync.IsChecked) right.SyncScrollFrom(left);
-                    return;
-                }
-                var rows = aligned.Rows.ToArray();
-                var heights = new (double LeftTop, double LeftHeight, double RightTop, double RightHeight)[rows.Length];
-                // Read natural layout first; writing paragraph spacing while measuring would invalidate later points.
-                for (var i = 0; i < rows.Length; i++)
-                {
-                    if (!active || version != alignmentVersion) return;
-                    var row = rows[i];
-                    // Re-read origins alongside each row so scrolling between batches
-                    // cannot become extra paragraph spacing.
-                    heights[i] = (left.LineTop(row.Left) - left.TextTop(0), Height(left, row.Left, leftHeight),
-                        right.LineTop(row.Right) - right.TextTop(0), Height(right, row.Right, rightHeight));
-                    if (i % 32 == 31) await left.YieldToInput();
-                }
-                var y = 0d;
-                var addedLeft = 0d; var addedRight = 0d;
-                for (var i = 0; i < rows.Length; i++)
-                {
-                    if (!active || version != alignmentVersion) return;
-                    var row = rows[i]; var h = heights[i];
-                    if (row.Left is not null)
-                    {
-                        var space = Math.Max(0, y - h.LeftTop - addedLeft);
-                        left.AddSpace(left.Position(row.Left), space); addedLeft += space;
-                    }
-                    if (row.Right is not null)
-                    {
-                        var space = Math.Max(0, y - h.RightTop - addedRight);
-                        right.AddSpace(right.Position(row.Right), space); addedRight += space;
-                    }
-                    y += Math.Max(h.LeftHeight, h.RightHeight);
-                    if (i % 32 == 31) await left.YieldToInput();
-                }
-                SetTailSpace(left, y, leftHeight);
-                SetTailSpace(right, y, rightHeight);
-                if (sync.IsChecked) right.SyncScrollFrom(left);
+                left.ResetSpacing(); right.ResetSpacing(); return;
             }
-            finally { applying = false; }
-
-            static void SetTailSpace(ComparisonEditor editor, double height, double lineHeight) =>
-                editor.SetTailSpace(TextCompareSpacing.TailSpace(height, editor.TextTop(editor.Position(null)), editor.TextTop(0), lineHeight));
-
-            static double Height(ComparisonEditor editor, ComparisonLine? line, double lineHeight)
+            var version = alignmentVersion;
+            var measurements = await Task.WhenAll(left.MeasureLinesAsync(), right.MeasureLinesAsync());
+            if (!active || version != alignmentVersion || !ReferenceEquals(aligned, vm.Alignment)) return;
+            var layout = TextCompareVirtualLayout.Create(aligned, measurements[0], measurements[1]);
+            left.SetSpacing(layout.Left); right.SetSpacing(layout.Right);
+            if (sync.IsChecked)
             {
-                if (line is null) return 0;
-                var start = editor.Position(line);
-                var length = line.Text.ReplaceLineEndings("\r").Length;
-                var end = start + length;
-                if (line.Text.Length > line.Content.Length) return Math.Max(lineHeight, editor.TextTop(end) - editor.TextTop(start));
-                return Math.Max(lineHeight, editor.TextTop(end) - editor.TextTop(start) + lineHeight);
+                if (scrollLeader == right) left.SyncScrollFrom(right);
+                else right.SyncScrollFrom(left);
             }
         }
         private void AddKey(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -456,20 +402,22 @@ public sealed partial class TextCompareViewFactory
             ComparisonEditor Editor() => side.SelectedIndex == 0 ? left : right;
             var flyout = new Flyout();
             flyout.Content = ToolLayout.Stack(side, find, replacement,
-                Ui.Row(Ui.Button("Find next", () => { if (!Editor().Find(find.Text)) message.Text = "No match found."; }),
-                    Ui.Button("Replace", () =>
+                Ui.Row(Ui.AsyncButton("Find next", async () => { if (!await Editor().FindAsync(find.Text)) message.Text = "No match found."; }),
+                    Ui.AsyncButton("Replace", async () =>
                     {
                         if (find.Text.Length == 0) { message.Text = "Enter text to find."; return; }
                         var editor = Editor();
                         if (!string.Equals(editor.SelectedText, find.Text, StringComparison.OrdinalIgnoreCase))
-                        { if (!editor.Find(find.Text)) message.Text = "No match found."; return; }
+                        { if (!await editor.FindAsync(find.Text)) message.Text = "No match found."; return; }
                         editor.ReplaceSelection(replacement.Text);
                     })), message);
             flyout.ShowAt(findButton);
         }
 
-        private void Swap()
+        private async void Swap()
         {
+            try { await Task.WhenAll(left.FlushAsync(), right.FlushAsync()); }
+            catch (Exception ex) { feedback.Text = ex.Message; return; }
             (leftFile.Path, rightFile.Path) = (rightFile.Path, leftFile.Path);
             (leftFile.SavedText, rightFile.SavedText) = (rightFile.SavedText, leftFile.SavedText);
             (leftFile.Encoding, rightFile.Encoding) = (rightFile.Encoding, leftFile.Encoding);
@@ -508,6 +456,7 @@ public sealed partial class TextCompareViewFactory
             var open = Ui.AsyncButton("Open…", async () => { var path = await dialogs.OpenAsync(); if (path is not null) await Open(path); }, ex => feedback.Text = $"Could not open text: {ex.Message}");
             var save = Ui.AsyncButton("Save as…", async () =>
             {
+                await editor.FlushAsync();
                 var text = Text(); var encoding = file.Encoding;
                 var path = await dialogs.SaveAsync(file.Path is null ? (isLeft ? "original" : "modified") : System.IO.Path.GetFileNameWithoutExtension(file.Path), ".txt", "Text file");
                 if (path is null) return;
@@ -515,8 +464,9 @@ public sealed partial class TextCompareViewFactory
                 await new AtomicFileWriter().WriteAsync(path, async (stream, token) => await stream.WriteAsync(bytes, token));
                 file.Path = path; file.SavedText = text; file.SavedEncoding = TextCompareFile.EncodingKey(encoding); UpdateFile(file, Text()); feedback.Text = "Text saved.";
             }, ex => feedback.Text = $"Could not save text: {ex.Message}");
-            var copy = Ui.Button("Copy", () =>
+            var copy = Ui.AsyncButton("Copy", async () =>
             {
+                await editor.FlushAsync();
                 try { var data = new DataPackage(); data.SetText(Text()); Clipboard.SetContent(data); feedback.Text = "Text copied."; }
                 catch (Exception ex) { feedback.Text = $"Could not copy text: {ex.Message}"; }
             });

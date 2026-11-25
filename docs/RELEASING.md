@@ -1,5 +1,7 @@
 # Building and publishing ProtoBench
 
+Text Compare uses the Microsoft Edge WebView2 Runtime for its continuous virtualized editor. The editor scripts, styles and MIT license are bundled in `Assets/TextCompareEditor`; it does not load code from a CDN or send source text to a service. The Evergreen runtime is included on Windows 11 and most updated Windows 10 installations. For machines without it, install the [WebView2 Runtime from Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) before using Text Compare.
+
 GitHub Actions builds the app and SDK on every push to `main`, pull request, and manual workflow run. It builds/tests the solution on Windows, then uploads separate **installer**, **portable**, **updates**, and **SDK/developer kit** artifacts. Both app distributions come from the same self-contained publish output. Dependencies are restored with .NET 10; official GitHub actions are pinned to commit IDs. The local tool manifest pins the Velopack CLI to the app's Velopack package version.
 
 The Windows build runs once for a `main` push. A tag push runs only the release workflow: it downloads that exact commit's successful main-build artifacts and publishes them, without rebuilding or repackaging. If main and the tag are pushed together, the release workflow waits for the main build (up to 50 minutes).
@@ -8,8 +10,8 @@ Set `Version` in `Directory.Build.props`, commit and push that change to `main`,
 
 ```powershell
 git push origin main
-git tag -a v2.0.25 -m "ProtoBench 2.0.25"
-git push origin v2.0.25
+git tag -a v2.0.26 -m "ProtoBench 2.0.26"
+git push origin v2.0.26
 ```
 
 Tags use `vMAJOR.MINOR.PATCH`, optionally with a prerelease suffix such as `v2.1.0-rc.1`, and must match the committed package version exactly. Tags containing a suffix create prereleases. Only successful `main` push builds of the exact tagged commit are eligible; pull-request packages and builds of other commits are excluded. Failed/cancelled builds and missing/expired packages stop the release. Artifacts are retained for 14 days; rerun the main build and then the failed release workflow when needed.

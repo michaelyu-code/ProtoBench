@@ -1,0 +1,20 @@
+html,body,#editor { margin:0; width:100%; height:100%; overflow:hidden; background:#303030; color-scheme:dark; }
+.CodeMirror { height:100%; font:18px/1.22 Consolas,monospace; color:#f3f3f3; background:#303030; }
+.CodeMirror-gutters { background:#303030; border:0; }
+.CodeMirror-linenumber { color:#aaa; padding:0 12px 0 8px; min-width:30px; }
+.CodeMirror-cursor { border-left-color:#eee; }
+.CodeMirror-selected { background:#315f86 !important; }
+.CodeMirror-focused .CodeMirror-selected { background:#376f9c !important; }
+.CodeMirror-lines { padding:8px 0; }
+.CodeMirror pre.CodeMirror-line,.CodeMirror pre.CodeMirror-line-like { padding:0 8px; }
+.diff-removed { background:#ffeded; color:#000; }
+.diff-added { background:#e7f7ea; color:#000; }
+.diff-removed-strong { background:#ffc3c3; color:#000; }
+.diff-added-strong { background:#ade7b9; color:#000; }
+.source-selection { background:#376f9c !important; color:#fff !important; }
+.selected-change .CodeMirror-linenumber { font-weight:bold; color:#eee; }
+.cm-visible-space { background-image:radial-gradient(circle,#999 1px,transparent 1px); background-size:10px 100%; }
+.show-whitespace .CodeMirror-line:after { content:'¶'; color:#999; }
+body.light,body.light .CodeMirror,body.light .CodeMirror-gutters { background:#fff; color:#161616; color-scheme:light; }
+body.light .CodeMirror-cursor { border-left-color:#111; }
+body.light .selected-change .CodeMirror-linenumber { color:#111; }

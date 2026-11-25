@@ -1,5 +1,15 @@
 # Verification record
 
+## Version 2.0.26 release checks — 25 November 2026
+
+Bumped package/file version to 2.0.26 while retaining assembly identity 2.0.0.0. The full Release suite passed 816 tests with the existing opt-in 2 GiB test skipped. The isolated x64 desktop Release build passed with zero warnings/errors and reports file version 2.0.26.0. Bundled editor assets were copied to the output and editor JavaScript passed its syntax check. All 13 offline release-selection checks passed and both GitHub Actions workflows passed actionlint 1.7.12. Installer packaging and publication run in GitHub Actions using the single main build.
+
+## Continuous virtualized Text Compare — 25 November 2026
+
+Replaced the RichEditBox display with locally bundled CodeMirror 5.65.21 in WebView2. Each pane retains one continuous editable document and scrollbar. CodeMirror renders only the viewport plus a 12-line margin; highlight spans are also restricted to that viewport. Edits cross the host bridge as versioned patches instead of repeatedly sending the whole document. Comparison, file saving, selection/copy, undo/redo and Find use the full source. Paragraph alignment uses line widgets and measured natural heights, including wrapped rows. The rejected paging implementation and its controls have been removed.
+
+The full Release suite passed 816 tests: Utilities 347, Parsing 161, Application 297 and Generation 11, with the existing opt-in 2 GiB test skipped. Four virtual-layout tests cover 30,000 equal lines, inserted lines, leading/trailing gaps and wrapped heights; the superseded native-spacing tests were removed with that implementation. The desktop Release build passed with zero warnings/errors. Live rendering counters reported 28 rendered rows near the start and 30 near the end of a complete 30,000-line HTML document (3,337,779 characters). Ctrl+End displayed readable text at line 30,000 without paging. A final-line edit and undo followed by Save as exactly reproduced the full original source. Ctrl+F found an offscreen match around line 29,175. The final build also preserves the active pane's scroll position when comparison layout refreshes. Included in v2.0.26.
+
 ## Version 2.0.25 release checks — 25 November 2026
 
 Bumped package/file version to 2.0.25 while retaining assembly identity 2.0.0.0. Text Compare now calculates alignment independently of scroll position and uses paragraph spacing instead of excessive bottom padding, preventing text from disappearing when one pane is empty or shorter. Unwrapped alignment plans only the required gaps, highlighting formats visible text, caret navigation uses a line index, and gutter/layout updates avoid continuous polling and redundant pane rebuilds. Live checks verified a 10,000-line input beside an empty pane and navigation/alignment around an insertion at line 5,000.
