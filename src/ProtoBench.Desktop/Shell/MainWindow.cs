@@ -13,7 +13,7 @@ using ProtoBench.Infrastructure.Plugins;
 
 namespace ProtoBench.Desktop.Shell;
 
-public sealed class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     private readonly ShellViewModel vm;
     private readonly IReadOnlyDictionary<string, IWorkspaceViewFactory> views;
@@ -61,7 +61,7 @@ public sealed class MainWindow : Window
     private readonly Dictionary<string, int> instanceNumbers = new();
 
     public MainWindow(ShellViewModel vm, IEnumerable<IWorkspaceViewFactory> views, ILogger<MainWindow> logger, UpdateService updates,
-        PluginPackageManager pluginPackages, PluginCatalog pluginCatalog, FileDialogService files)
+        PluginPackageManager pluginPackages, PluginCatalog pluginCatalog, FileDialogService files, ProtoBench.Application.Services.TodoManager todos)
     {
         this.vm = vm;
         this.views = views.ToDictionary(v => v.ToolId);
@@ -70,6 +70,7 @@ public sealed class MainWindow : Window
         this.pluginPackages = pluginPackages;
         this.pluginCatalog = pluginCatalog;
         this.files = files;
+        this.todos = todos;
         Title = "ProtoBench";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "ProtoBench.ico"));
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1320, 900));
@@ -198,7 +199,10 @@ public sealed class MainWindow : Window
             if (args.Tab == homeTab)
                 return;
             if (args.Tab.Tag is ToolWorkspace workspace)
+            {
+                UntrackTabActivity(workspace);
                 vm.Workspaces.Close(workspace);
+            }
             if (args.Tab == settingsTab)
             {
                 settingsTab = null;
@@ -215,6 +219,11 @@ public sealed class MainWindow : Window
         tabs.SelectionChanged += (_, _) => SyncNavigation();
         vm.Settings.Changed += () => { ApplyTheme(); dashboard.Refresh(); };
         navigation.SelectedItem = home;
+        SetupTodoNotifications();
+        Closed += (_, _) =>
+        {
+            foreach (var workspace in tabActivityHandlers.Keys.ToArray()) UntrackTabActivity(workspace);
+        };
     }
 
     private async Task CheckForUpdatesAtStartupAsync()
@@ -241,6 +250,8 @@ public sealed class MainWindow : Window
 
     public async void InitializeAsync(IReadOnlyList<string> diagnostics)
     {
+        try { todos.Load(); todoClock.Start(); }
+        catch (Exception ex) { Report(ex); }
         try
         {
             await vm.Settings.LoadAsync();
@@ -393,12 +404,14 @@ public sealed class MainWindow : Window
                     IconSource = new FontIconSource { Glyph = vm.Tools.Get(id).Icon }
                 };
                 ToolTipService.SetToolTip(tab, tab.Header);
+                TrackTabActivity(tab, workspace);
                 tabs.TabItems.Add(tab);
+                RefreshTodoNotice();
                 tabs.SelectedItem = tab;
                 SyncNavigation();
                 return workspace;
             }
-            catch { vm.Workspaces.Close(workspace); throw; }
+            catch { UntrackTabActivity(workspace); vm.Workspaces.Close(workspace); throw; }
         }
         catch (Exception ex) { Report(ex); return null; }
     }
@@ -499,7 +512,7 @@ public sealed class MainWindow : Window
             Ui.Text("Reload the app to apply plugin and custom definition changes."),
             Ui.AsyncButton("Reload app", ReloadAppAsync, Report));
         var removeLocalData = ToolLayout.Section("Remove local data",
-            Ui.Text("Permanently remove local settings, favorites, recent-file history, plugins, saved plugin update tokens, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
+            Ui.Text("Permanently remove local settings, tasks, timer preferences, favorites, recent-file history, plugins, saved plugin update tokens, custom definitions and logs. ProtoBench will close and stay installed. Saved files outside the local data folder are kept."),
             Ui.AsyncButton("Remove all local data…", RemoveLocalDataAsync, Report));
         var sections = ToolLayout.Columns(420,
             ToolLayout.Stack(
@@ -513,6 +526,7 @@ public sealed class MainWindow : Window
         settingsPage.MaxWidth = 1280;
         settingsPages = new TabView { IsAddTabButtonVisible = false, TabWidthMode = TabViewWidthMode.SizeToContent };
         settingsPages.TabItems.Add(new TabViewItem { Header = "General", IsClosable = false, Content = settingsPage });
+        settingsPages.TabItems.Add(new TabViewItem { Header = "To-do", IsClosable = false, Content = CreateTodoSettings() });
         settingsPages.TabItems.Add(new TabViewItem { Header = "Plugin manager", IsClosable = false,
             Content = ToolLayout.Page("Plugin manager", "Manage installed plugins and download updates from their developers.", CreatePluginPanel()) });
         settingsTab = new TabViewItem
@@ -533,7 +547,7 @@ public sealed class MainWindow : Window
             XamlRoot = root.XamlRoot, Title = "Remove all ProtoBench local data?",
             Content = "This permanently deletes saved plugin update tokens from the Windows credential vault, and settings, favorites, recent-file history, installed plugins, custom definitions and logs from:\n\n" +
                 ProtoBench.Infrastructure.Configuration.AppPaths.UserDirectory +
-                "\n\nProtoBench will close and running operations will stop. Unsaved workspace inputs will be lost. The app stays installed. Saved files outside this folder are kept. This cannot be undone.",
+                "\n\nSaved tasks, checklists and timer preferences will also be removed. ProtoBench will close and running operations will stop. Unsaved workspace inputs will be lost. The app stays installed. Saved files outside this folder are kept. This cannot be undone.",
             PrimaryButtonText = "Remove data and close", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;

@@ -14,6 +14,7 @@ using ProtoBench.Desktop.Features.Certificates;
 using ProtoBench.Desktop.Features.Networking;
 using ProtoBench.Desktop.Features.Keyboard;
 using ProtoBench.Desktop.Features.Text;
+using ProtoBench.Desktop.Features.Todo;
 using ProtoBench.Application.Services;
 using ProtoBench.Desktop.Features.Plugins;
 using ProtoBench.Infrastructure.Plugins;
@@ -81,6 +82,12 @@ public partial class App : Microsoft.UI.Xaml.Application
         collection.AddSingleton<IAsciiHexConverter, AsciiHexConverter>();
         collection.AddSingleton<ICp500Converter, Cp500Converter>();
         collection.AddSingleton<SessionSettings>();
+        collection.AddSingleton<ITodoStore>(_ => new JsonTodoStore(Path.Combine(AppPaths.UserDirectory, "tasks.json")));
+        collection.AddSingleton<TodoManager>();
+        collection.AddTransient<TodoWorkspace>();
+        collection.AddSingleton(new ToolDescriptor("todo", "To-do", "Manage local tasks, checklists, due dates and timeboxes with silent visual timer alerts.", ToolCategory.Utilities, "\uE9D5"));
+        collection.AddSingleton<IToolWorkspaceFactory>(sp => new WorkspaceFactory<TodoWorkspace>("todo", sp));
+        collection.AddSingleton<IWorkspaceViewFactory, TodoViewFactory>();
         collection.AddSingleton<FileDialogService>();
         collection.AddSingleton(new ToolDescriptor("base-converter", "Base Converter", "Convert numeric bases, ASCII and EBCDIC CP500 text and hex bytes.", ToolCategory.Calculators, NavigationIcons.BaseConverter));
         collection.AddSingleton(new ToolDescriptor("text-cleanup", "Text Cleanup", "Remove spaces, tabs, line endings, digits, punctuation and selected characters from pasted text.", ToolCategory.Utilities, NavigationIcons.TextCleanup));
@@ -201,5 +208,6 @@ public partial class App : Microsoft.UI.Xaml.Application
         window.Closed += (_, _) => { services.GetRequiredService<WorkspaceManager>().Dispose(); services.Dispose(); };
         window.Activate();
         window.InitializeAsync(parsers.Diagnostics.Concat(generators.Diagnostics).Concat(messages.Diagnostics).Concat(pluginDiagnostics).ToArray());
+        window.HandleTodoLaunch();
     }
 }
