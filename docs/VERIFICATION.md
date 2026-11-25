@@ -1,5 +1,53 @@
 # Verification record
 
+## Version 2.0.27 release checks — 25 November 2026
+
+Bumped package/file version to 2.0.27 while retaining assembly identity 2.0.0.0. This release includes Text Compare paste-focus and redraw fixes, font-size selection with 12 as the default, position-aware overview navigation, faster scroll forwarding and linked line-number highlights.
+
+The full Release suite passed 822 tests (Utilities 347, Parsing 161, Application 303 and Generation 11), with the existing opt-in 2 GiB test skipped. The x64 desktop Release build passed with zero warnings/errors and reports file version 2.0.27.0. Editor JavaScript syntax and all 13 release build-selection checks passed. Installer packaging and publication run in GitHub Actions using the exact tagged main-build artifacts.
+
+## Linked line-number highlights — 25 November 2026
+
+Clicking a source line number toggles a full-width blue row highlight across the two comparison panes. Corresponding rows use the comparison alignment rather than assuming equal source numbers; missing rows show the highlight in their aligned spacer gap. A different line replaces the highlight, clicking either corresponding number again clears it, and editing clears it. Filtered reviews expose the same number-click action and row highlight. The overlay does not modify source text, selection or undo history.
+
+Headless Edge checks clicked an actual line number in a 40,000-line document and verified the bridge event, full-width overlay, matching gap overlay in the second editor, persistence after scrolling away/back, clearing and unchanged source/revision. Existing paste, font, navigation and fast-scroll checks passed. All 19 Text Compare Application tests passed. The x64 Release desktop build passed with zero warnings/errors.
+
+## Faster synchronized Text Compare scrolling — 25 November 2026
+
+Scroll positions now use a dedicated lightweight bridge message from a capturing scroll listener, before CodeMirror renders the source viewport. Previously synchronization waited for an animation frame, highlight painting and visible-line measurement. Native scroll forwarding no longer performs redundant gutter layout; the normal viewport update handles that work. Programmatic follower scrolls remain suppressed to prevent feedback.
+
+Headless Edge checks verified immediate scroll messages during scroll-event dispatch before any viewport message, 100 rapid updates retaining the latest position, and a second editor reaching that position without echoing scroll messages. Existing large-paste, font-size, navigation and two-pane insertion checks passed. All 19 Text Compare Application tests passed; the x64 Release desktop build passed with zero warnings/errors. These checks validate the forwarding path rather than measuring end-to-end latency in the native WebView2 app.
+
+## Position-aware comparison overview clicks — 25 November 2026
+
+Clicking within an overview mark now targets the corresponding row within that change, rather than always its first row. This allows top/middle/bottom navigation through a single large changed block. Editable panes map to aligned rows; filtered reviews map to displayed rows using their measured heights, including wrapping. Previous/Next still targets the start of a changed section.
+
+All 19 Text Compare Application tests passed, including six new cases covering a 40,000-row single change at top/middle/bottom, separated changes with context, wrapped filtered rows, tiny expanded marks, endpoint clamping and missing/invalid targets. The x64 desktop Release build passed with zero warnings/errors.
+
+## Text Compare change navigation — 25 November 2026
+
+Comparison jumps now position the selected change about one third down the editor and suppress scroll feedback during the move. The host reveals the side containing the change, reads its resulting scroll position and aligns the other pane to that position, rather than sending a missing source line to the end of the document. Stacked panes use the change's source insertion offset when a line is absent. Superseded asynchronous jumps do not reposition the other pane.
+
+Headless Edge checks jumped forward/backward to lines 15,000, 1,000, 39,000, 1 and 20,000 in a 40,000-line document, verifying visibility, predictable positioning, stable scroll offsets, bounded rendering and no user-scroll feedback. A two-editor insertion check verified that the other pane displays the matching alignment gap. Paste-focus, immediate-redraw and font-size checks passed. All 13 Text Compare Application tests passed; the x64 Release desktop build passed with zero warnings/errors.
+
+## Text Compare font size — 25 November 2026
+
+Added View → Font size with 12, 14, 16, 18 (default), 20, 22, 24, 28 and 32 sizes, applied to both editors and filtered review text/line numbers. Font changes refresh editor geometry and alignment; filtered rows use the selected size for text measurement, row-height estimates and consistent number-column widths.
+
+Headless Edge checks on a 40,000-line document verified sizes 12, 32 and reset to 18, including computed font/line height, unchanged source and selection/revision, visible text and bounded rendering. Existing paste-focus and immediate-redraw browser checks passed. The x64 Release desktop build passed with zero warnings/errors; editor syntax and `git diff --check` passed.
+
+## Text Compare redraw after large paste — 25 November 2026
+
+Refresh CodeMirror after changing alignment widgets. Removing a large offscreen spacer could leave the rendered lines at their old pixel offset while the editor retained the same visible line range, producing a blank pane until scrolling.
+
+An isolated headless Edge regression check reproduced the blank pane after a 40,000-line paste into an input with a large leading gap. Without the refresh, the immediate-visibility assertion failed. With the fix, source lines intersected the viewport without further scrolling, the pasted source matched exactly, the removed gap no longer inflated document height, the view stayed near the pasted caret, and fewer than 100 lines were rendered. Both earlier gap-focus checks also passed. The x64 desktop Release build passed with zero warnings/errors; JavaScript syntax and `git diff --check` passed.
+
+## Text Compare paste focus — 25 November 2026
+
+Alignment spacer widgets now let CodeMirror handle mouse events. Previously, clicking the blank gap above an empty input (after pasting into the other pane) did not focus the editor, preventing subsequent paste into that pane. The same fix covers gaps in shorter inputs.
+
+An isolated headless Edge check using the bundled editor reproduced the focus failure with the previous widget setting. With the fix, clicks inside both leading empty-pane gaps and trailing shorter-pane gaps focused the editor, and browser text insertion reached the document while retaining existing content. All 13 Text Compare Application tests passed in Release. Editor JavaScript syntax and `git diff --check` passed.
+
 ## Version 2.0.26 release checks — 25 November 2026
 
 Bumped package/file version to 2.0.26 while retaining assembly identity 2.0.0.0. The full Release suite passed 816 tests with the existing opt-in 2 GiB test skipped. The isolated x64 desktop Release build passed with zero warnings/errors and reports file version 2.0.26.0. Bundled editor assets were copied to the output and editor JavaScript passed its syntax check. All 13 offline release-selection checks passed and both GitHub Actions workflows passed actionlint 1.7.12. Installer packaging and publication run in GitHub Actions using the single main build.

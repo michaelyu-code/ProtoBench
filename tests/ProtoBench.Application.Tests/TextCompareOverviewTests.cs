@@ -4,6 +4,47 @@ namespace ProtoBench.Application.Tests;
 
 public sealed class TextCompareOverviewTests
 {
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(50, 20_000)]
+    [InlineData(100, 39_999)]
+    public void ClickingWithinOneLargeChangeTargetsThatPosition(double y, int expectedRow)
+    {
+        var rows = Enumerable.Repeat((ChangeIndex: 0, Height: 14d), 40_000).ToArray();
+        var marks = TextCompareOverview.Create(rows, 100);
+        Assert.Equal(new TextCompareOverviewTarget(0, expectedRow), TextCompareOverview.FindTarget(marks, rows, y));
+    }
+
+    [Fact]
+    public void ClicksMapToAlignedRowsIncludingUnchangedContext()
+    {
+        (int ChangeIndex, double Height)[] rows = [(-1, 100), (0, 100), (-1, 100), (1, 100), (1, 100)];
+        var marks = TextCompareOverview.Create(rows, 100);
+        Assert.Equal(new TextCompareOverviewTarget(1, 3), TextCompareOverview.FindTarget(marks, rows, 65));
+        Assert.Equal(new TextCompareOverviewTarget(1, 4), TextCompareOverview.FindTarget(marks, rows, 99));
+        Assert.Equal(new TextCompareOverviewTarget(0, 1), TextCompareOverview.FindTarget(marks, rows, 0));
+    }
+
+    [Fact]
+    public void FilteredWrappedRowsUseTheirDisplayedHeightsForNavigation()
+    {
+        (int ChangeIndex, double Height)[] rows = [(0, 100), (0, 300), (0, 100)];
+        var marks = TextCompareOverview.Create(rows, 100);
+        Assert.Equal(new TextCompareOverviewTarget(0, 1), TextCompareOverview.FindTarget(marks, rows, 30));
+        Assert.Equal(new TextCompareOverviewTarget(0, 2), TextCompareOverview.FindTarget(marks, rows, 85));
+    }
+
+    [Fact]
+    public void ExpandedTinyMarksClampToTheirSourceRows()
+    {
+        (int ChangeIndex, double Height)[] rows = [(-1, 1000), (0, 1), (0, 1)];
+        var marks = TextCompareOverview.Create(rows, 20);
+        Assert.Equal(new TextCompareOverviewTarget(0, 1), TextCompareOverview.FindTarget(marks, rows, 17));
+        Assert.Equal(new TextCompareOverviewTarget(0, 2), TextCompareOverview.FindTarget(marks, rows, 30));
+        Assert.Null(TextCompareOverview.FindTarget([], [], 0));
+        Assert.Null(TextCompareOverview.FindTarget(marks, rows, double.NaN));
+    }
+
     [Fact]
     public void FilteredRowsStartAtTheTopWithoutHiddenSourceLines()
     {

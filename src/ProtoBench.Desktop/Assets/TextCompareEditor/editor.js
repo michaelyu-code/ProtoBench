@@ -17,6 +17,30 @@
   let painted = "", highlightRevision = 0, painting = false, viewportPending = false;
   let suppressScroll = false, userScroll = false, layoutPending = false, measuredHeights = [];
   let spacingKey = "[]";
+  let lineHighlight = null, lineHighlightGeometry = "";
+  const lineHighlightOverlay = document.createElement("div");
+  lineHighlightOverlay.className = "paired-line-highlight";
+  lineHighlightOverlay.hidden = true;
+  cm.getWrapperElement().appendChild(lineHighlightOverlay);
+  function updateLineHighlight() {
+    if (!lineHighlight) { lineHighlightOverlay.hidden = true; return; }
+    const info = cm.getScrollInfo();
+    if (lineHighlight.line != null) {
+      const line = lineHighlight.line - 1;
+      if (line < 0 || line > cm.lastLine()) { lineHighlightOverlay.hidden = true; return; }
+      lineHighlight.top = cm.charCoords({line, ch:0}, "local").top;
+      lineHighlight.height = naturalHeight(line);
+      const key = `${lineHighlight.top}:${lineHighlight.height}`;
+      if (key !== lineHighlightGeometry) {
+        lineHighlightGeometry = key;
+        post("lineHighlightGeometry", { line: lineHighlight.line, version, top: lineHighlight.top, height: lineHighlight.height });
+      }
+    }
+    const top = lineHighlight.top - info.top;
+    lineHighlightOverlay.hidden = !Number.isFinite(top) || top + lineHighlight.height < 0 || top > info.clientHeight;
+    lineHighlightOverlay.style.top = `${top}px`;
+    lineHighlightOverlay.style.height = `${lineHighlight.height}px`;
+  }
   const naturalHeight = line => Math.max(1, cm.getLineHandle(line).height - (widgetHeights.get(line) || 0));
   const notifyLayout = () => {
     if (layoutPending) return;
@@ -28,7 +52,7 @@
     if (viewportPending) return;
     viewportPending = true;
     requestAnimationFrame(() => {
-      viewportPending = false; paint();
+      viewportPending = false; paint(); updateLineHighlight();
       const info = cm.getScrollInfo(), view = cm.getViewport(), lines = [];
       for (let i = view.from; i < view.to; i++) {
         lines.push([i + 1, cm.heightAtLine(i, "local") - info.top]);
@@ -43,6 +67,18 @@
   function selection() {
     const from = cm.getCursor("from"), to = cm.getCursor("to");
     post("selection", { start: cm.indexFromPos(from), end: cm.indexFromPos(to), line: cm.getCursor().line + 1 });
+  }
+  function reveal(message) {
+    const position = message.position == null
+      ? { line: Math.min(cm.lastLine(), Math.max(0, message.line - 1)), ch: 0 }
+      : cm.posFromIndex(message.position);
+    suppressScroll = true; userScroll = false;
+    // Place the change predictably even when it was already barely visible.
+    const top = cm.charCoords(position, "local").top - cm.getScrollInfo().clientHeight / 3;
+    cm.scrollTo(0, Math.max(0, top)); queueViewport();
+    requestAnimationFrame(() => { suppressScroll = false; queueViewport(); });
+    const info = cm.getScrollInfo();
+    return { top: info.top, left: info.left };
   }
   function rangesInView(ranges, start, end) {
     let low = 0, high = ranges.length;
@@ -86,6 +122,19 @@
     selection(); queueViewport(); notifyLayout();
   });
   cm.on("cursorActivity", () => { selection(); highlightRevision++; queueViewport(); });
+  cm.on("gutterClick", (_, line, gutter, event) => {
+    if (gutter === "CodeMirror-linenumbers" && event.button === 0)
+      post("lineClick", { line: line + 1, version });
+  });
+  // Capture before CodeMirror's scroll handler renders the source viewport.
+  cm.getScrollerElement().addEventListener("scroll", () => {
+    if (!suppressScroll && !applying) {
+      // Forward the position before waiting for a frame, painting highlights or
+      // measuring visible lines. Those updates must not hold up the other pane.
+      const scroller = cm.getScrollerElement();
+      post("scroll", { top: scroller.scrollTop, left: scroller.scrollLeft });
+    }
+  }, { capture: true, passive: true });
   cm.on("scroll", () => queueViewport(!suppressScroll && !applying));
   cm.on("viewportChange", () => queueViewport());
   cm.on("update", () => queueViewport());
@@ -105,10 +154,15 @@
         const node = document.createElement("div"); node.style.height = `${gap.height}px`;
         // The pinned LineWidget implementation accepts its known height. Supplying it
         // avoids forcing browser layout merely to measure an offscreen spacer div.
-        widgets.push(cm.addLineWidget(line, node, { above: gap.above, coverGutter: true, noHScroll: true, height: gap.height }));
+        // Gaps are part of the editable surface. Let CodeMirror place the caret
+        // and focus its input when clicked, including above an empty document.
+        widgets.push(cm.addLineWidget(line, node, { above: gap.above, coverGutter: true, noHScroll: true, height: gap.height, handleMouseEvents: true }));
         widgetHeights.set(line, (widgetHeights.get(line) || 0) + gap.height);
       }
     });
+    // Removing an offscreen gap can leave the rendered viewport at its old
+    // pixel offset even when the visible line range has not changed.
+    cm.refresh();
     requestAnimationFrame(() => { suppressScroll = false; queueViewport(); });
   }
   function receive(message) {
@@ -125,13 +179,24 @@
         selection(); queueViewport(); notifyLayout(); break;
       case "highlights": weak = message.weak; strong = message.strong; removed = message.removed; highlightRevision++; queueViewport(); break;
       case "selected": selected = new Set(message.lines); highlightRevision++; queueViewport(); break;
+      case "lineHighlight":
+        lineHighlight = message.enabled ? {line:message.line, top:message.top, height:message.height} : null;
+        lineHighlightGeometry = ""; queueViewport(); break;
+      case "lineHighlightGeometry":
+        if (lineHighlight && lineHighlight.line == null) {
+          lineHighlight.top = message.top; lineHighlight.height = message.height; queueViewport();
+        }
+        break;
       case "wrap": cm.setOption("lineWrapping", message.value); measuredHeights = []; notifyLayout(); break;
+      case "fontSize":
+        cm.getWrapperElement().style.fontSize = `${message.value}px`;
+        measuredHeights = []; highlightRevision++; cm.refresh(); queueViewport(); notifyLayout(); break;
       case "theme": document.body.classList.toggle("light", !message.dark); cm.refresh(); notifyLayout(); break;
       case "label": cm.getInputField().setAttribute("aria-label", message.value); break;
       case "whitespace": cm.removeOverlay(whitespace); if (message.value) cm.addOverlay(whitespace); document.body.classList.toggle("show-whitespace", message.value); break;
       case "spacing": spacing(message.spaces); break;
       case "scroll": suppressScroll = true; cm.scrollTo(message.left, message.top); requestAnimationFrame(() => { suppressScroll = false; queueViewport(); }); break;
-      case "reveal": cm.scrollIntoView({ line: Math.min(cm.lastLine(), Math.max(0, message.line - 1)), ch: 0 }, cm.defaultTextHeight() * 2); queueViewport(); break;
+      case "reveal": reveal(message); break;
       case "replace": cm.replaceSelection(message.value, "around", "input"); cm.focus(); break;
       case "select": {
         const from = cm.posFromIndex(message.start), to = cm.posFromIndex(message.end);
@@ -141,6 +206,7 @@
   }
   host?.addEventListener("message", e => receive(e.data));
   window.editorBridge = {
+    reveal,
     state: () => ({ version, revision, start: cm.indexFromPos(cm.getCursor("from")), end: cm.indexFromPos(cm.getCursor("to")), line: cm.getCursor().line + 1 }),
     snapshot: () => ({ text: cm.getValue(), version, revision }),
     measure: () => { measuredHeights = Array.from({ length: cm.lineCount() }, (_, i) => naturalHeight(i)); return measuredHeights; },

@@ -46,6 +46,8 @@ public sealed partial class TextCompareViewFactory(FileDialogService dialogs) : 
         public event Action? FindRequested;
         public event Action<int>? NavigateRequested;
         public event Action<bool>? CopyRequested;
+        public event Action<int>? LineClicked;
+        public event Action<int, double, double>? LineHighlightGeometryChanged;
 
         public ComparisonEditor(string title, Func<string> read, Action<string> write)
         {
@@ -122,12 +124,15 @@ public sealed partial class TextCompareViewFactory(FileDialogService dialogs) : 
                 case "selection":
                     selectionStart = message.GetProperty("start").GetInt32(); selectionEnd = message.GetProperty("end").GetInt32();
                     CaretLine = message.GetProperty("line").GetInt32(); SelectionChanged?.Invoke(this, EventArgs.Empty); break;
+                case "scroll":
+                    scrollTop = message.GetProperty("top").GetDouble(); scrollLeft = message.GetProperty("left").GetDouble();
+                    ScrollChanged?.Invoke(this);
+                    break;
                 case "viewport":
                     scrollTop = message.GetProperty("top").GetDouble(); scrollLeft = message.GetProperty("left").GetDouble();
                     LineHeight = message.GetProperty("lineHeight").GetDouble(); lineTops.Clear();
                     foreach (var line in message.GetProperty("lines").EnumerateArray()) lineTops[line[0].GetInt32()] = line[1].GetDouble();
                     ViewportChanged?.Invoke();
-                    if (message.GetProperty("user").GetBoolean()) ScrollChanged?.Invoke(this);
 #if DEBUG
                     var diagnostics = Environment.GetEnvironmentVariable("PROTOBENCH_TEXT_COMPARE_DIAGNOSTICS");
                     if (!string.IsNullOrEmpty(diagnostics))
@@ -136,6 +141,14 @@ public sealed partial class TextCompareViewFactory(FileDialogService dialogs) : 
 #endif
                     break;
                 case "layout": GeometryChanged?.Invoke(); break;
+                case "lineClick":
+                    if (message.GetProperty("version").GetInt32() == documentVersion)
+                        LineClicked?.Invoke(message.GetProperty("line").GetInt32());
+                    break;
+                case "lineHighlightGeometry":
+                    if (message.GetProperty("version").GetInt32() == documentVersion)
+                        LineHighlightGeometryChanged?.Invoke(message.GetProperty("line").GetInt32(), message.GetProperty("top").GetDouble(), message.GetProperty("height").GetDouble());
+                    break;
                 case "find": FindRequested?.Invoke(); break;
                 case "navigate": NavigateRequested?.Invoke(message.GetProperty("direction").GetInt32()); break;
                 case "copy": CopyRequested?.Invoke(message.GetProperty("toRight").GetBoolean()); break;
@@ -180,9 +193,19 @@ public sealed partial class TextCompareViewFactory(FileDialogService dialogs) : 
         }
         public int Position(ComparisonLine? line) => line is null ? current.Length : starts[Math.Clamp(line.Number - 1, 0, starts.Count - 1)];
         public double LineTop(ComparisonLine? line) => line is not null && lineTops.TryGetValue(line.Number, out var top) ? top : -1_000_000;
-        public void Reveal(ComparisonLine? line) => Send(new { type = "reveal", line = line?.Number ?? starts.Count });
+        public async Task RevealAsync(ComparisonLine? line, int fallbackPosition)
+        {
+            await ready.Task;
+            var target = JsonSerializer.Serialize(new { line = line?.Number, position = line is null ? (int?)fallbackPosition : null }, Json);
+            using var result = JsonDocument.Parse(await web.CoreWebView2.ExecuteScriptAsync($"editorBridge.reveal({target})"));
+            scrollTop = result.RootElement.GetProperty("top").GetDouble();
+            scrollLeft = result.RootElement.GetProperty("left").GetDouble();
+        }
         public void MarkSelected(IEnumerable<int> lines) => Send(new { type = "selected", lines = lines.ToArray() });
+        public void HighlightLine(int? line, bool enabled) => Send(new { type = "lineHighlight", line, enabled });
+        public void HighlightLineGeometry(double top, double height) => Send(new { type = "lineHighlightGeometry", top, height });
         public void SetWrapping(bool enabled) => Send(new { type = "wrap", value = enabled });
+        public void SetFontSize(int size) => Send(new { type = "fontSize", value = size });
         public void SyncScrollFrom(ComparisonEditor source)
         {
             if (Math.Abs(source.scrollTop - scrollTop) < .5 && Math.Abs(source.scrollLeft - scrollLeft) < .5) return;

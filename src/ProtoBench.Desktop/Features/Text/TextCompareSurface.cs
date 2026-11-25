@@ -33,15 +33,19 @@ public sealed partial class TextCompareViewFactory
         private readonly ToggleMenuFlyoutItem automatic = new() { Text = "Compare automatically", IsChecked = true };
         private readonly TextBlock displayNotice = Ui.Text("");
         private int contextRadius = -1;
+        private int fontSize = 12;
         private readonly DispatcherTimer debounce = new() { Interval = TimeSpan.FromMilliseconds(400) };
-        private bool active, applying, alignPending, stacked;
+        private bool active, alignPending, stacked;
         private int alignmentVersion;
+        private int navigationVersion;
         private double layoutWidth = -1;
         private TextCompareDocument? indexedAlignment;
         private readonly Dictionary<int, int> leftChanges = [], rightChanges = [];
         private IReadOnlyList<TextCompareOverviewMark> overviewMarks = [];
+        private IReadOnlyList<(int ChangeIndex, double Height)> overviewRows = [];
         private readonly FileSide leftFile = new(), rightFile = new();
         private ComparisonEditor? scrollLeader;
+        private (bool Left, int Line)? highlightedLine;
         public FrameworkElement Root { get; }
 
         public ComparisonSurface(TextCompareWorkspace vm, FileDialogService dialogs)
@@ -70,6 +74,20 @@ public sealed partial class TextCompareViewFactory
             AddRule("Ignore blank lines", () => vm.Options.IgnoreBlankLines, value => vm.Options = vm.Options with { IgnoreBlankLines = value });
             var view = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
             view.Items.Add(wrap); view.Items.Add(sync);
+            var fontSizes = new MenuFlyoutSubItem { Text = "Font size" };
+            foreach (var size in new[] { 12, 14, 16, 18, 20, 22, 24, 28, 32 })
+            {
+                var item = new RadioMenuFlyoutItem { Text = size == 12 ? "12 (default)" : size.ToString(),
+                    GroupName = $"{vm.InstanceId}-font-size", IsChecked = size == fontSize };
+                item.Click += (_, _) =>
+                {
+                    fontSize = size;
+                    left.SetFontSize(size); right.SetFontSize(size);
+                    ApplyFilter(); ScheduleAlignment();
+                };
+                fontSizes.Items.Add(item);
+            }
+            view.Items.Add(fontSizes);
             var whitespace = new ToggleMenuFlyoutItem { Text = "Show whitespace" };
             whitespace.Click += (_, _) => { left.ShowWhitespace = right.ShowWhitespace = whitespace.IsChecked; ApplyFilter(); Refresh(); };
             view.Items.Add(whitespace); view.Items.Add(new MenuFlyoutSeparator());
@@ -83,13 +101,18 @@ public sealed partial class TextCompareViewFactory
             wrap.Click += (_, _) => { left.SetWrapping(wrap.IsChecked); right.SetWrapping(wrap.IsChecked); ApplyFilter(); ScheduleAlignment(); };
             sync.Click += (_, _) => { if (sync.IsChecked) right.SyncScrollFrom(left); };
             automatic.Click += (_, _) => { if (automatic.IsChecked) RequestCompare(); else debounce.Stop(); };
-            left.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) right.SyncScrollFrom(editor); UpdateGutter(); };
-            right.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) left.SyncScrollFrom(editor); UpdateGutter(); };
+            left.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) right.SyncScrollFrom(editor); };
+            right.ScrollChanged += editor => { scrollLeader = editor; if (sync.IsChecked) left.SyncScrollFrom(editor); };
             left.ViewportChanged += UpdateGutter; right.ViewportChanged += UpdateGutter;
             left.GeometryChanged += ScheduleAlignment; right.GeometryChanged += ScheduleAlignment;
             left.FindRequested += ShowFind; right.FindRequested += ShowFind;
             left.NavigateRequested += Navigate; right.NavigateRequested += Navigate;
             left.CopyRequested += Copy; right.CopyRequested += Copy;
+            left.LineClicked += line => ToggleLineHighlight(true, line);
+            right.LineClicked += line => ToggleLineHighlight(false, line);
+            review.LineClicked += ToggleLineHighlight;
+            left.LineHighlightGeometryChanged += (line, top, height) => UpdateLineHighlightGap(true, line, top, height);
+            right.LineHighlightGeometryChanged += (line, top, height) => UpdateLineHighlightGap(false, line, top, height);
             left.SelectionChanged += (_, _) => SelectAtCaret(left, true);
             right.SelectionChanged += (_, _) => SelectAtCaret(right, false);
             var more = new MenuFlyout();
@@ -121,12 +144,12 @@ public sealed partial class TextCompareViewFactory
             overview.PointerPressed += (_, e) =>
             {
                 if (vm.Alignment is not { Changes.Count: > 0 }) return;
-                var change = TextCompareOverview.FindNearest(overviewMarks, e.GetCurrentPoint(overview).Position.Y);
-                if (change < 0) return;
-                vm.SelectedChange = change;
-                Reveal(); e.Handled = true;
+                var target = TextCompareOverview.FindTarget(overviewMarks, overviewRows, e.GetCurrentPoint(overview).Position.Y);
+                if (target is not { } hit) return;
+                vm.SelectedChange = hit.ChangeIndex;
+                Reveal(hit.RowIndex); e.Handled = true;
             };
-            ToolTipService.SetToolTip(overview, "Comparison overview · click to jump to a change");
+            ToolTipService.SetToolTip(overview, "Comparison overview · click to jump to that position in a change");
             var content = new Grid { RowSpacing = 8 };
             for (var i = 0; i < 4; i++) content.RowDefinitions.Add(new RowDefinition { Height = i == 2 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             content.Children.Add(toolbar);
@@ -136,7 +159,7 @@ public sealed partial class TextCompareViewFactory
             var footer = Ui.Row(previous, next, navigation, Ui.BoundText(vm, nameof(vm.Summary)), undo, narrowCopyRight, narrowCopyLeft);
             Grid.SetRow(footer, 3); content.Children.Add(footer);
             Root = ToolLayout.FittedPage(vm.Title, "", content,
-                ToolLayout.Help(Ui.Text("Paste or open text on either side. Changes refresh after you pause typing. F7 / Shift+F7 moves between changes. Use the centre arrows to copy the selected change; Undo copy restores both inputs until another edit. Spacer gaps align corresponding lines without adding characters. Rules ignore case, whitespace or blank lines without changing either input. Wrapping and synchronized scrolling are in View. Open supports UTF-8 and BOM-marked UTF-16; save preserves the detected encoding and newline convention. Mixed line endings are retained until editing, which uses the first line-ending convention. Inputs remain local and are not saved automatically.")));
+                ToolLayout.Help(Ui.Text("Paste or open text on either side. Changes refresh after you pause typing. F7 / Shift+F7 moves between changes. Click a line number to highlight the corresponding row in both panes; click again to clear it. Use the centre arrows to copy the selected change; Undo copy restores both inputs until another edit. Spacer gaps align corresponding lines without adding characters. Rules ignore case, whitespace or blank lines without changing either input. Wrapping and synchronized scrolling are in View. Open supports UTF-8 and BOM-marked UTF-16; save preserves the detected encoding and newline convention. Mixed line endings are retained until editing, which uses the first line-ending convention. Inputs remain local and are not saved automatically.")));
             AddKey(VirtualKey.F7, VirtualKeyModifiers.None, () => Navigate(1));
             AddKey(VirtualKey.F7, VirtualKeyModifiers.Shift, () => Navigate(-1));
             AddKey(VirtualKey.Right, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, () => Copy(true));
@@ -179,6 +202,10 @@ public sealed partial class TextCompareViewFactory
 
         private void Changed(object? sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName is nameof(vm.Original) or nameof(vm.Modified))
+            {
+                highlightedLine = null; ApplyLineHighlight();
+            }
             if (e.PropertyName == nameof(vm.IsBusy) && vm.IsBusy) debounce.Stop();
             if (e.PropertyName == nameof(vm.Status)) operation.Text = vm.Status == "Working…" ? "Comparing…" : vm.Status is "Ready" or "Completed" or "Cancelled" ? "" : vm.Status;
             if (e.PropertyName == nameof(vm.Original)) { alignmentVersion++; left.SyncText(); UpdateFile(leftFile, vm.Original); RequestCompare(); }
@@ -200,15 +227,30 @@ public sealed partial class TextCompareViewFactory
             debounce.Stop(); debounce.Start();
         }
         private void Navigate(int direction) { vm.Navigate(direction); Reveal(); }
-        private void Reveal()
+        private async void Reveal(int? rowIndex = null)
         {
+            var version = ++navigationVersion;
             if (vm.Alignment is not { } aligned || vm.SelectedChange < 0 || vm.SelectedChange >= aligned.Changes.Count) return;
-            if (contextRadius >= 0) { review.SelectChange(vm.SelectedChange, true); return; }
-            var row = aligned.Rows[aligned.Changes[vm.SelectedChange].FirstRow];
-            applying = true;
-            try { left.Reveal(row.Left); right.Reveal(row.Right); }
-            finally { applying = false; }
-            UpdateGutter();
+            if (contextRadius >= 0) { review.SelectChange(vm.SelectedChange, true, rowIndex); return; }
+            var change = aligned.Changes[vm.SelectedChange];
+            var targetRow = rowIndex is { } index && index >= change.FirstRow && index < change.FirstRow + change.RowCount
+                ? index : change.FirstRow;
+            var row = aligned.Rows[targetRow];
+            var primary = row.Left is null ? right : left;
+            var secondary = primary == left ? right : left;
+            scrollLeader = primary;
+            try
+            {
+                await primary.RevealAsync(row.Left ?? row.Right, primary == left ? change.LeftStart : change.RightStart);
+                if (!active || version != navigationVersion || !ReferenceEquals(aligned, vm.Alignment)) return;
+                // Both panes share aligned pixel geometry. A missing source line
+                // is a visual gap here, not a request to jump to end of file.
+                if (!stacked) secondary.SyncScrollFrom(primary);
+                else await secondary.RevealAsync(primary == left ? row.Right : row.Left,
+                    primary == left ? change.RightStart : change.LeftStart);
+                UpdateGutter();
+            }
+            catch (Exception ex) { feedback.Text = $"Could not jump to the change: {ex.Message}"; }
         }
         private async void Copy(bool toRight)
         {
@@ -217,14 +259,39 @@ public sealed partial class TextCompareViewFactory
         }
         private void SelectAtCaret(ComparisonEditor editor, bool isLeft)
         {
-            if (applying || vm.Alignment is null) return;
+            if (vm.Alignment is null) return;
             if ((isLeft ? leftChanges : rightChanges).TryGetValue(editor.CaretLine, out var change)) vm.SelectedChange = change;
+        }
+        private ComparisonRow? HighlightedRow => highlightedLine is { } selected && vm.Alignment is { } aligned
+            ? aligned.Rows.FirstOrDefault(row => (selected.Left ? row.Left : row.Right)?.Number == selected.Line) : null;
+        private void ToggleLineHighlight(bool isLeft, int line)
+        {
+            var row = HighlightedRow;
+            var same = highlightedLine is { } selected && (selected.Left == isLeft && selected.Line == line
+                || (isLeft ? row?.Left : row?.Right)?.Number == line);
+            highlightedLine = same ? null : (isLeft, line);
+            ApplyLineHighlight();
+        }
+        private void ApplyLineHighlight()
+        {
+            var row = HighlightedRow;
+            var enabled = highlightedLine is not null;
+            left.HighlightLine(row?.Left?.Number ?? (vm.Alignment is null ? highlightedLine?.Line : null), enabled);
+            right.HighlightLine(row?.Right?.Number ?? (vm.Alignment is null ? highlightedLine?.Line : null), enabled);
+            review.HighlightLine(row);
+        }
+        private void UpdateLineHighlightGap(bool isLeft, int line, double top, double height)
+        {
+            if (highlightedLine is not { } selected || selected.Left != isLeft || selected.Line != line || HighlightedRow is not { } row) return;
+            if (isLeft && row.Right is null) right.HighlightLineGeometry(top, height);
+            if (!isLeft && row.Left is null) left.HighlightLineGeometry(top, height);
         }
         private void Refresh()
         {
             if (!ReferenceEquals(indexedAlignment, vm.Alignment))
             {
                 indexedAlignment = vm.Alignment;
+                ApplyLineHighlight();
                 leftChanges.Clear(); rightChanges.Clear();
                 if (indexedAlignment is not null)
                     foreach (var row in indexedAlignment.Rows)
@@ -271,7 +338,7 @@ public sealed partial class TextCompareViewFactory
             copyLeft.Visibility = copyRight.Visibility = Visibility.Collapsed;
             narrowCopyLeft.Visibility = narrowCopyRight.Visibility = Visibility.Visible;
             review.Visibility = Visibility.Visible;
-            review.Update(aligned, visible, vm.SelectedChange, wrap.IsChecked, left.ShowWhitespace);
+            review.Update(aligned, visible, vm.SelectedChange, wrap.IsChecked, left.ShowWhitespace, fontSize);
             displayNotice.Text = $"{aligned.Rows.Count - visible.Count} aligned rows hidden · choose View → All lines to edit.";
         }
         private void OverviewLayoutUpdated(object? sender, object e)
@@ -294,15 +361,17 @@ public sealed partial class TextCompareViewFactory
         {
             overview.Children.Clear();
             overviewMarks = [];
+            overviewRows = [];
             overview.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, overview.ActualWidth, overview.ActualHeight) };
             if (vm.Alignment is not { } aligned || overview.ActualHeight <= 0) return;
             // Compress long documents, but never stretch a short document to fill the editor.
-            if (review.Visibility == Visibility.Visible) overviewMarks = review.OverviewMarks(overview.ActualHeight);
+            if (review.Visibility == Visibility.Visible) overviewRows = review.OverviewRows;
             else
             {
                 var rowHeight = Math.Max(1, right.LineHeight);
-                overviewMarks = TextCompareOverview.Create(aligned.Rows.Select(row => (row.ChangeIndex, rowHeight)).ToArray(), overview.ActualHeight);
+                overviewRows = aligned.Rows.Select(row => (row.ChangeIndex, rowHeight)).ToArray();
             }
+            overviewMarks = TextCompareOverview.Create(overviewRows, overview.ActualHeight);
             // Bucket overview marks by pixel to keep rendering bounded for very large inputs.
             foreach (var bucket in overviewMarks.GroupBy(mark => (int)mark.Top))
             {

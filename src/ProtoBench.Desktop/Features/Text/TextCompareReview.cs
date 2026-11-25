@@ -20,14 +20,36 @@ internal sealed class TextCompareReview : Grid
     private readonly HashSet<Grid> realized = [];
     private bool wrapping;
     private double widestText;
+    private double textFontSize = 12;
     private ReviewRow[] displayedRows = [];
     private double[] rowHeights = [];
     private bool overviewPending;
     private ScrollViewer? verticalViewport;
     public double OverviewInset { get; private set; }
     public event Action? OverviewChanged;
-    public IReadOnlyList<TextCompareOverviewMark> OverviewMarks(double height) => TextCompareOverview.Create(
-        displayedRows.Select((row, i) => (row.ChangeIndex, rowHeights[i])).ToArray(), height);
+    public event Action<bool, int>? LineClicked;
+    private ComparisonRow? highlightedLine;
+    public void HighlightLine(ComparisonRow? row)
+    {
+        highlightedLine = row;
+        foreach (var root in realized) UpdateLineHighlight(root);
+    }
+    private void UpdateLineHighlight(Grid root)
+    {
+        if (root.FindName("LineHighlight") is Border highlight)
+            highlight.Visibility = highlightedLine is not null && root.Tag is RowPresentation item && item.Row.Row == highlightedLine
+                ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void LineNumberTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (sender is not Grid { Tag: RowPresentation item } || e.OriginalSource is not TextBlock number) return;
+        var left = number.Name == "LeftNumber";
+        if (!left && number.Name != "RightNumber") return;
+        if ((left ? item.Row.Row.Left : item.Row.Row.Right) is not { } line) return;
+        LineClicked?.Invoke(left, line.Number); e.Handled = true;
+    }
+    public IReadOnlyList<(int ChangeIndex, double Height)> OverviewRows =>
+        displayedRows.Select((row, i) => (row.ChangeIndex, rowHeights[i])).ToArray();
     public FrameworkElement Viewport => list;
     private bool updating, whitespace;
     public void SetInteractive(bool enabled) => list.IsEnabled = enabled;
@@ -76,22 +98,23 @@ internal sealed class TextCompareReview : Grid
         list.ItemTemplate = (DataTemplate)XamlReader.Load("""
             <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
               <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NumberWidth}"/><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/><ColumnDefinition Width="{Binding NumberWidth}"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <Border Grid.ColumnSpan="2" Background="{Binding LeftBackground}"/>
                 <Border Grid.Column="3" Grid.ColumnSpan="2" Background="{Binding RightBackground}"/>
-                <TextBlock Text="{Binding LeftNumber}" Margin="4,2,8,2" TextAlignment="Right" Foreground="{Binding NumberForeground}" FontFamily="Consolas"/>
+                <TextBlock x:Name="LeftNumber" Text="{Binding LeftNumber}" Margin="4,2,8,2" TextAlignment="Right" Foreground="{Binding NumberForeground}" FontFamily="Consolas" FontSize="{Binding FontSize}"/>
                 <Grid x:Name="LeftCell" Grid.Column="1">
                   <Canvas x:Name="LeftCanvas" Height="26" VerticalAlignment="Top">
-                    <TextBlock x:Name="LeftText" Text="{Binding LeftText}" Margin="0,2,4,2" FontFamily="Consolas" FontSize="18" TextWrapping="{Binding Wrapping}" Foreground="{Binding Foreground}" IsTextSelectionEnabled="True"/>
+                    <TextBlock x:Name="LeftText" Text="{Binding LeftText}" Margin="0,2,4,2" FontFamily="Consolas" FontSize="{Binding FontSize}" TextWrapping="{Binding Wrapping}" Foreground="{Binding Foreground}" IsTextSelectionEnabled="True"/>
                   </Canvas>
                 </Grid>
                 <TextBlock Grid.Column="2" Text="{Binding Marker}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,2"/>
-                <TextBlock Grid.Column="3" Text="{Binding RightNumber}" Margin="4,2,8,2" TextAlignment="Right" Foreground="{Binding NumberForeground}" FontFamily="Consolas"/>
+                <TextBlock x:Name="RightNumber" Grid.Column="3" Text="{Binding RightNumber}" Margin="4,2,8,2" TextAlignment="Right" Foreground="{Binding NumberForeground}" FontFamily="Consolas" FontSize="{Binding FontSize}"/>
                 <Grid x:Name="RightCell" Grid.Column="4">
                   <Canvas x:Name="RightCanvas" Height="26" VerticalAlignment="Top">
-                    <TextBlock x:Name="RightText" Text="{Binding RightText}" Margin="0,2,4,2" FontFamily="Consolas" FontSize="18" TextWrapping="{Binding Wrapping}" Foreground="{Binding Foreground}" IsTextSelectionEnabled="True"/>
+                    <TextBlock x:Name="RightText" Text="{Binding RightText}" Margin="0,2,4,2" FontFamily="Consolas" FontSize="{Binding FontSize}" TextWrapping="{Binding Wrapping}" Foreground="{Binding Foreground}" IsTextSelectionEnabled="True"/>
                   </Canvas>
                 </Grid>
+                <Border x:Name="LineHighlight" Grid.ColumnSpan="5" Visibility="Collapsed" IsHitTestVisible="False" BorderBrush="#60B8FF" BorderThickness="0,1,0,1" Background="#2440A0FF"/>
               </Grid>
             </DataTemplate>
             """);
@@ -106,6 +129,7 @@ internal sealed class TextCompareReview : Grid
             if (args.ItemContainer.ContentTemplateRoot is Grid recycled)
             {
                 realized.Remove(recycled);
+                recycled.Tapped -= LineNumberTapped;
                 recycled.SizeChanged -= RowSizeChanged;
                 if (recycled.Tag is RowPresentation old)
                 {
@@ -139,6 +163,8 @@ internal sealed class TextCompareReview : Grid
             (Grid)root.FindName("RightCell"), (Canvas)root.FindName("RightCanvas"), rightText,
             Measure(row.LeftText), Measure(row.RightText));
         root.Tag = presentation; realized.Add(root);
+        root.Tapped -= LineNumberTapped; root.Tapped += LineNumberTapped;
+        UpdateLineHighlight(root);
         root.SizeChanged -= RowSizeChanged; root.SizeChanged += RowSizeChanged;
         presentation.LeftCell.SizeChanged -= CellSizeChanged; presentation.LeftCell.SizeChanged += CellSizeChanged;
         presentation.RightCell.SizeChanged -= CellSizeChanged; presentation.RightCell.SizeChanged += CellSizeChanged;
@@ -165,9 +191,9 @@ internal sealed class TextCompareReview : Grid
         overviewPending = true;
         DispatcherQueue.TryEnqueue(() => { overviewPending = false; OverviewChanged?.Invoke(); });
     }
-    private static double Measure(string text)
+    private double Measure(string text)
     {
-        var sample = new TextBlock { Text = text, FontFamily = new FontFamily("Consolas"), FontSize = 18, FontWeight = FontWeights.Bold };
+        var sample = new TextBlock { Text = text, FontFamily = new FontFamily("Consolas"), FontSize = textFontSize, FontWeight = FontWeights.Bold };
         sample.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         return Math.Ceiling(sample.DesiredSize.Width) + 4;
     }
@@ -197,11 +223,13 @@ internal sealed class TextCompareReview : Grid
         row.Right.RenderTransform = new TranslateTransform { X = wrapping ? 0 : -horizontal.Value };
     }
 
-    public void Update(TextCompareDocument document, HashSet<int> visible, int selected, bool wrap, bool showWhitespace)
+    public void Update(TextCompareDocument document, HashSet<int> visible, int selected, bool wrap, bool showWhitespace, double fontSize)
     {
+        textFontSize = fontSize;
         whitespace = showWhitespace;
         foreach (var root in realized)
         {
+            root.Tapped -= LineNumberTapped;
             root.SizeChanged -= RowSizeChanged;
             if (root.Tag is RowPresentation old)
             {
@@ -213,29 +241,33 @@ internal sealed class TextCompareReview : Grid
         realized.Clear();
         wrapping = wrap; widestText = 0; horizontal.Value = 0; horizontal.Maximum = 0;
         horizontal.Visibility = Visibility.Collapsed;
+        var numberWidth = Math.Max(52, document.Rows.Count.ToString().Length * fontSize * .65 + 12);
         displayedRows = visible.Order().Select((i, displayIndex) => new ReviewRow(document.Rows[i], Display(document.Rows[i].Left?.Content ?? ""),
-            Display(document.Rows[i].Right?.Content ?? ""), wrap, displayIndex)).ToArray();
-        rowHeights = Enumerable.Repeat(26d, displayedRows.Length).ToArray();
+            Display(document.Rows[i].Right?.Content ?? ""), wrap, displayIndex, fontSize, numberWidth)).ToArray();
+        rowHeights = Enumerable.Repeat(Math.Max(26, fontSize * 1.3 + 4), displayedRows.Length).ToArray();
         updating = true;
         try { list.ItemsSource = displayedRows; }
         finally { updating = false; }
         SelectChange(selected, false);
         QueueOverviewRefresh();
     }
-    public void SelectChange(int change, bool reveal)
+    public void SelectChange(int change, bool reveal, int? displayRow = null)
     {
         updating = true;
         try
         {
-            var item = list.Items.OfType<ReviewRow>().FirstOrDefault(r => r.ChangeIndex == change && change >= 0);
+            var item = displayRow is { } index && index >= 0 && index < displayedRows.Length && displayedRows[index].ChangeIndex == change
+                ? displayedRows[index] : list.Items.OfType<ReviewRow>().FirstOrDefault(r => r.ChangeIndex == change && change >= 0);
             list.SelectedItem = item;
             if (reveal && item is not null) list.ScrollIntoView(item);
         }
         finally { updating = false; }
     }
     private string Display(string text) => whitespace ? text.Replace(" ", "·").Replace("\t", "→   ") : text;
-    public sealed class ReviewRow(ComparisonRow row, string leftText, string rightText, bool wrap, int displayIndex)
+    public sealed class ReviewRow(ComparisonRow row, string leftText, string rightText, bool wrap, int displayIndex, double fontSize, double numberWidth)
     {
+        public double FontSize => fontSize;
+        public GridLength NumberWidth => new(numberWidth);
         public ComparisonRow Row { get; } = row;
         public int ChangeIndex => Row.ChangeIndex;
         public int DisplayIndex => displayIndex;

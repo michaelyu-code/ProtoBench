@@ -1,6 +1,7 @@
 namespace ProtoBench.Desktop.Features.Text;
 
 internal readonly record struct TextCompareOverviewMark(int ChangeIndex, double Top, double Height);
+internal readonly record struct TextCompareOverviewTarget(int ChangeIndex, int RowIndex);
 
 /// <summary>Maps displayed rows to overview marks using the same geometry for drawing and navigation.</summary>
 internal static class TextCompareOverview
@@ -27,4 +28,24 @@ internal static class TextCompareOverview
 
     public static int FindNearest(IReadOnlyList<TextCompareOverviewMark> marks, double y) => marks.Count == 0 ? -1 :
         marks.MinBy(mark => y < mark.Top ? mark.Top - y : Math.Max(0, y - mark.Top - mark.Height)).ChangeIndex;
+
+    public static TextCompareOverviewTarget? FindTarget(IReadOnlyList<TextCompareOverviewMark> marks,
+        IReadOnlyList<(int ChangeIndex, double Height)> rows, double y)
+    {
+        if (marks.Count == 0 || !double.IsFinite(y)) return null;
+        var mark = marks.MinBy(mark => y < mark.Top ? mark.Top - y : Math.Max(0, y - mark.Top - mark.Height));
+        var fraction = Math.Clamp((y - mark.Top) / mark.Height, 0, 1);
+        var total = rows.Where(row => row.ChangeIndex == mark.ChangeIndex).Sum(row => Math.Max(1, row.Height));
+        var target = fraction * total;
+        var offset = 0d;
+        TextCompareOverviewTarget? last = null;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].ChangeIndex != mark.ChangeIndex) continue;
+            last = new(mark.ChangeIndex, i);
+            offset += Math.Max(1, rows[i].Height);
+            if (target < offset) return last;
+        }
+        return last;
+    }
 }
