@@ -15,6 +15,7 @@
     <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCleanupWorkspace.cs" Link="Desktop/TextCleanupWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCompareWorkspace.cs" Link="Desktop/TextCompareWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCompareOverview.cs" Link="Desktop/TextCompareOverview.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Text/TextCompareSpacing.cs" Link="Desktop/TextCompareSpacing.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Services/ComparisonReport.cs" Link="Desktop/ComparisonReport.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Calculators/CalculatorWorkspace.cs" Link="Desktop/CalculatorWorkspace.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Parsers/ParserWorkspace.cs" Link="Desktop/ParserWorkspace.cs" />

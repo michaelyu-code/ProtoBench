@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.25 release checks — 25 November 2026
+
+Bumped package/file version to 2.0.25 while retaining assembly identity 2.0.0.0. Text Compare now calculates alignment independently of scroll position and uses paragraph spacing instead of excessive bottom padding, preventing text from disappearing when one pane is empty or shorter. Unwrapped alignment plans only the required gaps, highlighting formats visible text, caret navigation uses a line index, and gutter/layout updates avoid continuous polling and redundant pane rebuilds. Live checks verified a 10,000-line input beside an empty pane and navigation/alignment around an insertion at line 5,000.
+
+The full Release suite passed 825 tests: Utilities 347, Parsing 161, Application 306 and Generation 11. The existing opt-in 2 GiB test was skipped. The isolated x64 Release desktop build passed with zero warnings/errors and reports file version 2.0.25.0. All 13 offline release-selection checks passed, both GitHub Actions workflows passed actionlint 1.7.12, and `git diff --check` passed. Main pushes now build/package once; the tag-only release workflow waits for and reuses successful main-build artifacts for the exact tagged commit and version. Installer packaging/publication run in GitHub Actions.
+
 ## Version 2.0.24 release checks — 24 November 2026
 
 Bumped package/file version to 2.0.24 while retaining assembly identity 2.0.0.0. This release fixes long-line overflow in filtered Text Compare panes, adds shared horizontal scrolling for those panes, and aligns overview markers with visible rows and measured wrapped heights.

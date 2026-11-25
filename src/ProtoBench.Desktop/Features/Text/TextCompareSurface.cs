@@ -36,6 +36,9 @@ public sealed partial class TextCompareViewFactory
         private readonly DispatcherTimer debounce = new() { Interval = TimeSpan.FromMilliseconds(400) };
         private bool active, applying, alignPending, stacked;
         private int alignmentVersion;
+        private double layoutWidth = -1;
+        private TextCompareDocument? indexedAlignment;
+        private readonly Dictionary<int, int> leftChanges = [], rightChanges = [];
         private IReadOnlyList<TextCompareOverviewMark> overviewMarks = [];
         private readonly FileSide leftFile = new(), rightFile = new();
         public FrameworkElement Root { get; }
@@ -168,18 +171,13 @@ public sealed partial class TextCompareViewFactory
         {
             if (e.PropertyName == nameof(vm.IsBusy) && vm.IsBusy) debounce.Stop();
             if (e.PropertyName == nameof(vm.Status)) operation.Text = vm.Status == "Working…" ? "Comparing…" : vm.Status is "Ready" or "Completed" or "Cancelled" ? "" : vm.Status;
-            if (e.PropertyName == nameof(vm.Original)) { left.SyncText(); UpdateFile(leftFile, vm.Original); RequestCompare(); }
-            if (e.PropertyName == nameof(vm.Modified)) { right.SyncText(); UpdateFile(rightFile, vm.Modified); RequestCompare(); }
+            if (e.PropertyName == nameof(vm.Original)) { alignmentVersion++; left.SyncText(); UpdateFile(leftFile, vm.Original); RequestCompare(); }
+            if (e.PropertyName == nameof(vm.Modified)) { alignmentVersion++; right.SyncText(); UpdateFile(rightFile, vm.Modified); RequestCompare(); }
             if (e.PropertyName == nameof(vm.Options)) RequestCompare();
             if (e.PropertyName == nameof(vm.Result))
             {
-                applying = true;
-                try
-                {
-                    left.Highlight(vm.Result, TextDifferenceKind.Removed, vm.Alignment);
-                    right.Highlight(vm.Result, TextDifferenceKind.Added, vm.Alignment);
-                }
-                finally { applying = false; }
+                left.Highlight(vm.Result, TextDifferenceKind.Removed, vm.Alignment);
+                right.Highlight(vm.Result, TextDifferenceKind.Added, vm.Alignment);
                 ApplyFilter();
                 ScheduleAlignment();
             }
@@ -208,17 +206,23 @@ public sealed partial class TextCompareViewFactory
         }
         private void SelectAtCaret(ComparisonEditor editor, bool isLeft)
         {
-            if (applying || vm.Alignment is not { } aligned) return;
-            var position = editor.Document.Selection.StartPosition;
-            foreach (var change in aligned.Changes)
-            {
-                var rows = aligned.Rows.Skip(change.FirstRow).Take(change.RowCount);
-                if (rows.Any(r => (isLeft ? r.Left : r.Right) is { } line && position >= editor.Position(line) && position < editor.Position(line) + line.Text.ReplaceLineEndings("\r").Length))
-                { vm.SelectedChange = change.Index; break; }
-            }
+            if (applying || editor.IsDecorating || vm.Alignment is null) return;
+            if ((isLeft ? leftChanges : rightChanges).TryGetValue(editor.CaretLine, out var change)) vm.SelectedChange = change;
         }
         private void Refresh()
         {
+            if (!ReferenceEquals(indexedAlignment, vm.Alignment))
+            {
+                indexedAlignment = vm.Alignment;
+                leftChanges.Clear(); rightChanges.Clear();
+                if (indexedAlignment is not null)
+                    foreach (var row in indexedAlignment.Rows)
+                    {
+                        if (!row.IsChange) continue;
+                        if (row.Left is { } a) leftChanges[a.Number] = row.ChangeIndex;
+                        if (row.Right is { } b) rightChanges[b.Number] = row.ChangeIndex;
+                    }
+            }
             var hasChanges = vm.Alignment?.Changes.Count > 0;
             previous.IsEnabled = next.IsEnabled = copyLeft.IsEnabled = copyRight.IsEnabled = narrowCopyLeft.IsEnabled = narrowCopyRight.IsEnabled = hasChanges;
             navigation.Text = vm.Alignment is null ? "Compare to find changes" : vm.Navigation;
@@ -313,7 +317,17 @@ public sealed partial class TextCompareViewFactory
         }
         private void Reflow()
         {
-            stacked = panes.ActualWidth < 620;
+            var nextStacked = panes.ActualWidth < 620;
+            var changed = stacked != nextStacked;
+            var widthChanged = Math.Abs(layoutWidth - panes.ActualWidth) > .5;
+            if (layoutWidth >= 0 && !changed)
+            {
+                layoutWidth = panes.ActualWidth;
+                if (widthChanged && wrap.IsChecked) ScheduleAlignment();
+                return;
+            }
+            layoutWidth = panes.ActualWidth;
+            stacked = nextStacked;
             narrowCopyLeft.Visibility = narrowCopyRight.Visibility = stacked || contextRadius >= 0 ? Visibility.Visible : Visibility.Collapsed;
             panes.RowDefinitions.Clear(); panes.RowDefinitions.Add(new RowDefinition());
             if (stacked) panes.RowDefinitions.Add(new RowDefinition());
@@ -351,6 +365,29 @@ public sealed partial class TextCompareViewFactory
                 left.ResetSpacing(); right.ResetSpacing();
                 left.SetTailSpace(0); right.SetTailSpace(0);
                 if (stacked || contextRadius >= 0 || vm.Alignment is not { } aligned) return;
+                var leftHeight = left.LineHeight; var rightHeight = right.LineHeight;
+                // Measure in document coordinates. Each editor may currently be scrolled
+                // to a different position, including an empty pane that cannot scroll.
+                if (!wrap.IsChecked)
+                {
+                    var spacing = TextCompareSpacing.Create(aligned, leftHeight, rightHeight);
+                    var batch = System.Diagnostics.Stopwatch.StartNew();
+                    foreach (var (editor, spaces) in new[] { (left, spacing.Left), (right, spacing.Right) })
+                        foreach (var space in spaces)
+                        {
+                            if (!active || version != alignmentVersion) return;
+                            editor.AddSpace(editor.Position(space.Line), space.Pixels);
+                            if (batch.ElapsedMilliseconds >= 8)
+                            {
+                                await editor.YieldToInput(); batch.Restart();
+                            }
+                        }
+                    if (!active || version != alignmentVersion) return;
+                    SetTailSpace(left, spacing.Height, leftHeight);
+                    SetTailSpace(right, spacing.Height, rightHeight);
+                    if (sync.IsChecked) right.SyncScrollFrom(left);
+                    return;
+                }
                 var rows = aligned.Rows.ToArray();
                 var heights = new (double LeftTop, double LeftHeight, double RightTop, double RightHeight)[rows.Length];
                 // Read natural layout first; writing paragraph spacing while measuring would invalidate later points.
@@ -358,10 +395,13 @@ public sealed partial class TextCompareViewFactory
                 {
                     if (!active || version != alignmentVersion) return;
                     var row = rows[i];
-                    heights[i] = (left.LineTop(row.Left), Height(left, row.Left), right.LineTop(row.Right), Height(right, row.Right));
-                    if (i % 256 == 255) await Task.Yield();
+                    // Re-read origins alongside each row so scrolling between batches
+                    // cannot become extra paragraph spacing.
+                    heights[i] = (left.LineTop(row.Left) - left.TextTop(0), Height(left, row.Left, leftHeight),
+                        right.LineTop(row.Right) - right.TextTop(0), Height(right, row.Right, rightHeight));
+                    if (i % 32 == 31) await left.YieldToInput();
                 }
-                var y = rows.Length == 0 ? 0 : Math.Max(heights[0].LeftTop, heights[0].RightTop);
+                var y = 0d;
                 var addedLeft = 0d; var addedRight = 0d;
                 for (var i = 0; i < rows.Length; i++)
                 {
@@ -378,22 +418,25 @@ public sealed partial class TextCompareViewFactory
                         right.AddSpace(right.Position(row.Right), space); addedRight += space;
                     }
                     y += Math.Max(h.LeftHeight, h.RightHeight);
-                    if (i % 256 == 255) await Task.Yield();
+                    if (i % 32 == 31) await left.YieldToInput();
                 }
-                left.SetTailSpace(y - left.TextTop(left.Position(null)) - left.LineHeight);
-                right.SetTailSpace(y - right.TextTop(right.Position(null)) - right.LineHeight);
+                SetTailSpace(left, y, leftHeight);
+                SetTailSpace(right, y, rightHeight);
                 if (sync.IsChecked) right.SyncScrollFrom(left);
             }
             finally { applying = false; }
 
-            static double Height(ComparisonEditor editor, ComparisonLine? line)
+            static void SetTailSpace(ComparisonEditor editor, double height, double lineHeight) =>
+                editor.SetTailSpace(TextCompareSpacing.TailSpace(height, editor.TextTop(editor.Position(null)), editor.TextTop(0), lineHeight));
+
+            static double Height(ComparisonEditor editor, ComparisonLine? line, double lineHeight)
             {
                 if (line is null) return 0;
                 var start = editor.Position(line);
                 var length = line.Text.ReplaceLineEndings("\r").Length;
                 var end = start + length;
-                if (line.Text.Length > line.Content.Length) return Math.Max(editor.LineHeight, editor.TextTop(end) - editor.TextTop(start));
-                return Math.Max(editor.LineHeight, editor.TextTop(end) - editor.TextTop(start) + editor.LineHeight);
+                if (line.Text.Length > line.Content.Length) return Math.Max(lineHeight, editor.TextTop(end) - editor.TextTop(start));
+                return Math.Max(lineHeight, editor.TextTop(end) - editor.TextTop(start) + lineHeight);
             }
         }
         private void AddKey(VirtualKey key, VirtualKeyModifiers modifiers, Action action)

@@ -2,14 +2,19 @@
 
 GitHub Actions builds the app and SDK on every push to `main`, pull request, and manual workflow run. It builds/tests the solution on Windows, then uploads separate **installer**, **portable**, **updates**, and **SDK/developer kit** artifacts. Both app distributions come from the same self-contained publish output. Dependencies are restored with .NET 10; official GitHub actions are pinned to commit IDs. The local tool manifest pins the Velopack CLI to the app's Velopack package version.
 
-Push a version tag to publish a GitHub Release after the Windows build and tests pass:
+The Windows build runs once for a `main` push. A tag push runs only the release workflow: it downloads that exact commit's successful main-build artifacts and publishes them, without rebuilding or repackaging. If main and the tag are pushed together, the release workflow waits for the main build (up to 50 minutes).
+
+Set `Version` in `Directory.Build.props`, commit and push that change to `main`, then push a matching version tag:
 
 ```powershell
-git tag -a v2.0.1 -m "ProtoBench 2.0.1"
-git push origin v2.0.1
+git push origin main
+git tag -a v2.0.25 -m "ProtoBench 2.0.25"
+git push origin v2.0.25
 ```
 
-Tags use `vMAJOR.MINOR.PATCH`, optionally with a prerelease suffix such as `v2.1.0-rc.1`. Tags containing a suffix create prereleases. The release job creates a draft, uploads all verified packages, then publishes it. Rerunning a tag build can replace its assets. The workflow uses GitHub's built-in token; no personal access token or repository secret needs to be configured. Only the release job gets repository write permission.
+Tags use `vMAJOR.MINOR.PATCH`, optionally with a prerelease suffix such as `v2.1.0-rc.1`, and must match the committed package version exactly. Tags containing a suffix create prereleases. Only successful `main` push builds of the exact tagged commit are eligible; pull-request packages and builds of other commits are excluded. Failed/cancelled builds and missing/expired packages stop the release. Artifacts are retained for 14 days; rerun the main build and then the failed release workflow when needed.
+
+The release job creates a draft, uploads all verified packages, then publishes it. Rerunning the release workflow can replace its assets. The workflows use GitHub's built-in token; no personal access token or repository secret needs to be configured. Only the release job gets repository write permission, plus read access to build artifacts.
 
 Release downloads:
 
