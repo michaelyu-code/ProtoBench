@@ -128,7 +128,8 @@ try {
     $standard = Join-Path $staging 'samples/ExamplePlugin'
     $native = Join-Path $staging 'samples/ExampleWinUIPlugin'
     $structured = Join-Path $staging 'samples/StructuredResultsPlugin'
-    $null = New-Item -ItemType Directory -Path $standard, $native, $structured -Force
+    $commandScreen = Join-Path $staging 'samples/CommandScreenPlugin'
+    $null = New-Item -ItemType Directory -Path $standard, $native, $structured, $commandScreen -Force
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/ExamplePlugin.cs') -Destination $standard
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/plugin.json') -Destination $standard
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/ExamplePlugin/definitions') -Destination $standard -Recurse
@@ -136,6 +137,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/WinUIExamplePlugin/plugin.json') -Destination $native
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/StructuredResultsPlugin/Plugin.cs') -Destination $structured
     Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/StructuredResultsPlugin/plugin.json') -Destination $structured
+    Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/CommandScreenPlugin/Plugin.cs') -Destination $commandScreen
+    Copy-Item -LiteralPath (Join-Path $repository 'samples/plugins/CommandScreenPlugin/plugin.json') -Destination $commandScreen
     $standardProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>__FRAMEWORK__</TargetFramework><EnableDynamicLoading>true</EnableDynamicLoading></PropertyGroup>
@@ -149,6 +152,7 @@ try {
 '@
     Write-Utf8 'samples/ExamplePlugin/ExamplePlugin.csproj' ($standardProject.Replace('__FRAMEWORK__', $framework))
     Write-Utf8 'samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj' ($standardProject.Replace('__FRAMEWORK__', $framework))
+    Write-Utf8 'samples/CommandScreenPlugin/CommandScreenPlugin.csproj' ($standardProject.Replace('__FRAMEWORK__', $framework))
     $nativeProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -171,7 +175,7 @@ try {
 
     # Include the contract source as a browsable API reference, without requiring the app source to build.
     foreach ($source in @(
-        'PluginSdk/PluginContracts.cs', 'PluginSdk/StructuredToolResults.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
+        'PluginSdk/PluginContracts.cs', 'PluginSdk/PluginCommands.cs', 'PluginSdk/StructuredToolResults.cs', 'PluginSdk.WinUI/ICustomToolViewProvider.cs',
         'Parsing/Abstractions/ILogParser.cs', 'Parsing/Abstractions/IStreamingLogParser.cs', 'Parsing/Abstractions/IFieldDecoder.cs',
         'Parsing/Definitions/Iso8583Profile.cs', 'Parsing/Engines/Iso8583Parser.cs',
         'Parsing/Engines/Iso8583Codecs.cs', 'Parsing/Engines/Iso8583Ebcdic.cs',
@@ -187,7 +191,7 @@ try {
     Write-Host 'Verifying standalone starters and creating example plugin packages…'
     # Run in a child PowerShell so a packaging failure cannot be hidden by an unrelated successful command.
     $powershellExecutable = (Get-Process -Id $PID).Path
-    foreach ($project in @('samples/ExamplePlugin/ExamplePlugin.csproj', 'samples/ExampleWinUIPlugin/ExampleWinUIPlugin.csproj', 'samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj')) {
+    foreach ($project in @('samples/ExamplePlugin/ExamplePlugin.csproj', 'samples/ExampleWinUIPlugin/ExampleWinUIPlugin.csproj', 'samples/StructuredResultsPlugin/StructuredResultsPlugin.csproj', 'samples/CommandScreenPlugin/CommandScreenPlugin.csproj')) {
         & $powershellExecutable -NoProfile -File (Join-Path $staging 'tools/Build-PluginPackage.ps1') -ProjectPath (Join-Path $staging $project) -Configuration $Configuration | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Standalone starter failed: $project" }
     }
@@ -201,7 +205,7 @@ try {
             (Get-FileHash -LiteralPath (Join-Path $staging 'app/ProtoBench.PluginSdk.WinUI.dll')).Hash) { throw 'WinUI SDK/app binary mismatch.' }
     }
     # Verification builds are disposable. Keep source starters, ready-to-import packages and all published app files.
-    foreach ($sample in @($standard, $native, $structured)) {
+    foreach ($sample in @($standard, $native, $structured, $commandScreen)) {
         foreach ($name in @('bin', 'obj')) {
             $buildPath = [IO.Path]::GetFullPath((Join-Path $sample $name))
             if ([IO.Path]::GetDirectoryName($buildPath) -ne [IO.Path]::GetFullPath($sample)) { throw 'Unexpected sample build path.' }

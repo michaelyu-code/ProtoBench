@@ -213,6 +213,55 @@ window.chrome.webview.postMessage({type:'execute', id:'1', inputs:{text:'hello'}
 
 `samples/plugins/WinUIExamplePlugin/Plugin.cs` includes a complete HTML counter alongside its native counter. Both call independent per-tab C# sessions; the HTML counter demonstrates the portable `WebView` property without implementing `ICustomToolViewProvider` for that tool. You can also embed an HTML file as an assembly resource and read it when creating the tool definition; it does not require loose package assets.
 
+## Screen commands, concurrency and live events (SDK 2.0.4 / host 2.0.34)
+
+For a server, monitor or other interactive screen, implement the optional `IPluginCommandSession`. This separate channel never changes the standard form's inputs, result, status or busy flag. Existing `execute` tools retain their serial behavior. Rebuild against SDK 2.0.4 and use host 2.0.34 or later; API version 2 and assembly identity 2.0.0.0 remain unchanged. Older hosts do not understand these messages.
+
+| Request | Behavior | Reply |
+| --- | --- | --- |
+| `{type:'command', id:'r1', command:'send', arguments:{connectionId:'c1', text:'hello'}}` | Calls `ExecuteCommandAsync` off the UI thread with an independent JSON arguments snapshot and cancellation token. | `{type:'commandResult', id, success, result, status}` |
+| `{type:'cancelCommand', id:'r2', targetId:'r1'}` | Requests cancellation of that active or queued command only. | `{type:'ack', id, success:true, cancelled}` |
+
+`result` is the JSON value returned by the session. Failures and cancellation return `success:false`, `result:null` and an explanatory `status`; invalid/unsupported requests receive the existing `error` reply. Arguments must be an object; command names and target IDs must be nonblank strings of at most 128 characters. The existing 1 MiB request limit applies. Use distinct request IDs for commands and acknowledgements, and match every response by ID: replies can arrive out of order. Reusing an active command ID is rejected; reuse after completion is allowed. Cancellation is cooperative and best effort: a command already completing can still succeed; `cancelled:false` means the target is absent or completing. Legacy `cancel` affects only legacy execution.
+
+Sessions default to `PluginCommandConcurrency.Sequential`, which queues commands in the host. Set `CommandConcurrency => PluginCommandConcurrency.Parallel` to allow overlapping handlers in the same tab. At most 128 commands may be active/queued per tab; excess requests fail immediately. Different tabs have independent sessions and queues. Legacy `execute` and commands cannot overlap in the same session, even in parallel mode. `clear` only resets standard form state and does not stop commands or the server.
+
+```csharp
+using System.Text.Json;
+
+public sealed class ServerScreenSession : IPluginCommandSession
+{
+    public PluginCommandConcurrency CommandConcurrency => PluginCommandConcurrency.Parallel;
+    public event EventHandler<PluginToolEvent>? EventReceived;
+
+    public Task<PluginToolResult> ExecuteAsync(
+        IReadOnlyDictionary<string, string> inputs, CancellationToken token)
+        => Task.FromResult(new PluginToolResult("Use the custom screen."));
+
+    public Task<JsonElement> ExecuteCommandAsync(
+        string command, JsonElement arguments, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (command != "status") throw new ArgumentException("Unknown command.");
+        return Task.FromResult(JsonSerializer.SerializeToElement(new { state = "ready" }));
+    }
+
+    // Called from a backend worker; the host marshals the event to the UI thread.
+    public void OnTraffic(string connectionId, string text) => EventReceived?.Invoke(this,
+        new("traffic", JsonSerializer.SerializeToElement(new { connectionId, text })));
+
+    public void Dispose() { /* Stop and join owned listener/workers here. */ }
+}
+```
+
+Events arrive as `{type:'event', name, data, sequence}` without a request ID. The host assigns increasing per-tab sequence numbers and serializes data during event delivery. Event names must be nonblank and at most 128 characters. Keep any `JsonDocument` supplying event data alive until invocation returns. Events over 1 MiB of serialized text are dropped. The native host allows at most 256 pending event deliveries and drops excess events. Events before screen readiness are not buffered or replayed; install the JavaScript listener before requesting initial state. Events are notifications, not a durable traffic log: batch high-volume traffic, retain backend records and fetch snapshots/pages through commands. Sequence gaps can signal dropped events after the screen connects.
+
+Closing a tab rejects new commands, unsubscribes events and requests cancellation of queued/running commands. The host waits for those handlers and their cancellation callbacks before disposing the session, and does not deliver late replies/events to the closed screen. Handlers must honor cancellation; plugin code cannot safely be force-stopped. Long-lived server listeners should belong to the session: a `start` command starts the listener and returns, and `stop`/`Dispose` stop it. A command's cancellation token belongs to that command, not the whole server. Stop background resources and join workers in `Dispose`.
+
+The host owns request matching, argument snapshots, independent results, cancellation and shutdown coordination. The addon owns server invariants: protect connection collections, serialize start/stop transitions, and coordinate sends with disconnects. Use a session-local `SemaphoreSlim` for related operations while independent connections run concurrently. Do not access UI controls from handlers, block a cancellation callback waiting for its own command, or start untracked background work unless the session owns and stops it.
+
+`samples/plugins/CommandScreenPlugin` is a complete portable sample with JavaScript promise matching, two overlapping operations, per-request cancellation and worker events. The developer kit includes the sample and command contract source.
+
 ## Calculator plugins and shared utilities
 
 Calculator plugins can use the same standard responsive Inputs/Results layout as other tools. Export a `PluginTool` with `ActionLabel: "Calculate"`, ordered text/secret/choice inputs, and a fresh `IPluginToolSession` per tab. Return the result and any explanation in `PluginToolResult.Text`. The optional WinUI SDK supports custom controls, including checkboxes; the standard form supports boolean options using a Choice input with Yes/No values.

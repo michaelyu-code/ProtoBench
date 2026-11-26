@@ -19,13 +19,25 @@ public sealed class PluginWebViewBridge(PluginToolWorkspace workspace)
             if (string.IsNullOrWhiteSpace(id) || id.Length > 128) throw new ArgumentException("Supply a string request id of 1–128 characters.");
             switch (root.GetProperty("type").GetString())
             {
+                case "command":
+                    var command = root.GetProperty("command").GetString();
+                    if (string.IsNullOrWhiteSpace(command) || command.Length > 128)
+                        throw new ArgumentException("Supply a command name of 1–128 characters.");
+                    var arguments = root.GetProperty("arguments");
+                    if (arguments.ValueKind != JsonValueKind.Object) throw new ArgumentException("Supply an arguments object.");
+                    return await workspace.ExecuteCommandAsync(id, command, arguments);
+                case "cancelCommand":
+                    var targetId = root.GetProperty("targetId").GetString();
+                    if (string.IsNullOrWhiteSpace(targetId) || targetId.Length > 128)
+                        throw new ArgumentException("Supply a targetId of 1–128 characters.");
+                    return JsonSerializer.Serialize(new { type = "ack", id, success = true, cancelled = workspace.CancelCommand(targetId) }, Json);
                 case "cancel": workspace.Cancel(); return Reply("ack", true);
                 case "clear":
                     if (workspace.IsBusy) throw new ArgumentException("Tool is busy.");
                     workspace.Clear();
                     return Reply("ack", true);
                 case "execute":
-                    if (workspace.IsBusy) throw new ArgumentException("Tool is busy.");
+                    if (workspace.IsBusy || workspace.HasPendingCommands) throw new ArgumentException("Tool is busy.");
                     var inputs = root.GetProperty("inputs").Deserialize<Dictionary<string, string>>()
                         ?? throw new ArgumentException("Supply an inputs object.");
                     // Validate the complete request before changing any inputs.
@@ -35,7 +47,7 @@ public sealed class PluginWebViewBridge(PluginToolWorkspace workspace)
                     foreach (var input in inputs) workspace.SetInput(input.Key, input.Value);
                     await workspace.ExecuteAsync();
                     return JsonSerializer.Serialize(new { type = "result", id, success = workspace.Result is not null, result = workspace.Result, status = workspace.Status }, Json);
-                default: throw new ArgumentException("Unknown message type. Use execute, cancel or clear.");
+                default: throw new ArgumentException("Unknown message type. Use execute, cancel, clear, command or cancelCommand.");
             }
         }
         catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException)

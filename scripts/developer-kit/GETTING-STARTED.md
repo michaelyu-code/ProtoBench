@@ -34,6 +34,14 @@ For the shared spec-search and field-decoder views, build the portable structure
 
 It produces `packages/example.structured-results-1.0.0.nstplugin` (also prebuilt). It demonstrates ranked-list/passage presentation, decoder component rows, provenance, numeric limits, and optional supporting-field editors using `PluginToolResult.Search` and `.Decoding`. No custom WinUI view is required. Its content and decoding rules are synthetic, and its search filters fixed example passages rather than running BM25. Use the matching 2.0.10+ host and SDK. See the structured-results section of `docs/PLUGINS.md` to connect a real engine.
 
+For concurrent screen commands, targeted cancellation and backend events, build the portable command-screen example:
+
+```powershell
+./tools/Build-PluginPackage.ps1 -ProjectPath ./samples/CommandScreenPlugin/CommandScreenPlugin.csproj
+```
+
+It produces `packages/example.command-screen-1.0.0.nstplugin` (also prebuilt). The sample matches replies by request ID, runs two operations in parallel, cancels one independently and displays worker events. It uses `IPluginCommandSession`; sequential queuing is the default and parallel execution is opt-in. Use SDK 2.0.4 with host 2.0.34 or later. See the screen-commands section of `docs/PLUGINS.md` for lifecycle and addon synchronization responsibilities.
+
 ## Compile against the SDK
 
 Standard tools, parsers, generators and field decoders import `sdk/ProtoBench.PluginSdk.props` in their project. It references all portable contract DLLs under `sdk/net10.0` with `Private=false`, so the host's SDK copies are not bundled into your plugin. Keep `<EnableDynamicLoading>true</EnableDynamicLoading>` in plugin projects.

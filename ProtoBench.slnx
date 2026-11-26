@@ -21,6 +21,7 @@
     <Project Path="tests/ProtoBench.Utilities.Tests/ProtoBench.Utilities.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/plugins/CommandScreenPlugin/CommandScreenPlugin.csproj" />
     <Project Path="samples/plugins/StructuredResultsPlugin/StructuredResultsPlugin.csproj" />
   </Folder>
 </Solution>

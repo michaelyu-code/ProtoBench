@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 2,
+  "id": "example.command-screen",
+  "name": "Concurrent screen example",
+  "version": "1.0.0",
+  "entryAssembly": "CommandScreenPlugin.dll",
+  "entryType": "CommandScreenPlugin.Plugin",
+  "files": ["CommandScreenPlugin.dll", "CommandScreenPlugin.deps.json"]
+}

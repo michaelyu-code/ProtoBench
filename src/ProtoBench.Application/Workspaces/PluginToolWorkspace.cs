@@ -14,7 +14,11 @@ public sealed class PluginToolWorkspace : ToolWorkspace
     private string output = "";
     private IReadOnlyList<ParsedField> fields = [];
     private PluginToolResult? result;
-    private bool disposed, sessionDisposed;
+    private volatile bool disposed;
+    private int sessionDisposed;
+    private readonly PluginCommandDispatcher? commands;
+    internal bool HasPendingCommands => commands?.HasPending == true;
+    public event EventHandler<string>? WebMessageReceived;
     public event EventHandler? Disposed;
     public string Output { get => output; private set => SetProperty(ref output, value); }
     public IReadOnlyList<ParsedField> Fields { get => fields; private set => SetProperty(ref fields, value); }
@@ -37,17 +41,33 @@ public sealed class PluginToolWorkspace : ToolWorkspace
         Definition = definition;
         foreach (var input in definition.Inputs) Inputs.Add(input.Id, input.DefaultValue);
         Session = definition.CreateSession() ?? throw new InvalidOperationException("Plugin returned no session.");
+        if (Session is IPluginCommandSession commandSession)
+        {
+            commands = new(commandSession);
+            commands.MessageReceived += (_, message) => WebMessageReceived?.Invoke(this, message);
+            commands.Drained += (_, _) => TryDisposeSession();
+        }
     }
 
-    public Task ExecuteAsync()
+    internal Task<string> ExecuteCommandAsync(string id, string command, System.Text.Json.JsonElement arguments)
     {
-        if (disposed || IsBusy) return Task.CompletedTask;
+        if (disposed) throw new InvalidOperationException("Tool is closed.");
+        if (IsBusy) throw new InvalidOperationException("Tool is busy executing the standard form.");
+        if (commands is null) throw new InvalidOperationException("This session does not support commands.");
+        return commands.ExecuteAsync(id, command, arguments);
+    }
+
+    internal bool CancelCommand(string id) => commands?.Cancel(id) == true;
+
+    public async Task ExecuteAsync()
+    {
+        if (disposed || IsBusy || HasPendingCommands) return;
         var snapshot = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(new Dictionary<string, string>(Inputs));
-        return RunAsync(async token =>
+        try
         {
-            ResetResult();
-            try
+            await RunAsync(async token =>
             {
+                ResetResult();
                 foreach (var input in Definition.Inputs)
                 {
                     var value = snapshot.GetValueOrDefault(input.Id) ?? "";
@@ -67,9 +87,9 @@ public sealed class PluginToolWorkspace : ToolWorkspace
                 if (result.Search is not null && result.Decoding is not null)
                     throw new ArgumentException("A tool result cannot contain both search and decoding presentations.");
                 if (!disposed) { Output = result.Text; Fields = result.Fields ?? []; Result = result; }
-            }
-            finally { if (disposed) DisposeSession(); }
-        });
+            });
+        }
+        finally { TryDisposeSession(); }
     }
 
     public void Clear()
@@ -84,17 +104,18 @@ public sealed class PluginToolWorkspace : ToolWorkspace
     {
         if (disposed) return;
         disposed = true;
+        commands?.Dispose();
+        WebMessageReceived = null;
         base.Dispose();
         Inputs.Clear();
         ResetResult();
-        if (!IsBusy) DisposeSession();
+        TryDisposeSession();
         Disposed?.Invoke(this, EventArgs.Empty);
         Disposed = null;
     }
-    private void DisposeSession()
+    private void TryDisposeSession()
     {
-        if (sessionDisposed) return;
-        sessionDisposed = true;
+        if (!disposed || IsBusy || HasPendingCommands || Interlocked.Exchange(ref sessionDisposed, 1) != 0) return;
         try { Session.Dispose(); } catch { }
     }
 }

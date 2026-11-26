@@ -86,6 +86,21 @@ public sealed partial class SmokeApp : Microsoft.UI.Xaml.Application
             await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#output').textContent") == "\"Clicks: 3\"", "restored first session", host);
             if (secondWorkspace.Output != "Clicks: 1") throw new InvalidOperationException("Second session changed when the first screen ran.");
             observations.Add("Unicode HTML loaded; switching screens preserved separate sessions and browser state.");
+            var commandSample = new CommandScreenPlugin.Plugin().Tools.Single();
+            using var commandWorkspace = new PluginToolWorkspace(commandSample);
+            var commandHost = new PluginWebViewHost(commandWorkspace, commandSample.WebView!);
+            var commandWeb = commandHost.Children.OfType<WebView2>().Single();
+            window.Content = commandHost;
+            await WaitUntil(async () => commandWeb.CoreWebView2 is not null &&
+                await commandWeb.CoreWebView2.ExecuteScriptAsync("document.querySelector('#run') !== null") == "true", "command screen", commandHost);
+            await commandWeb.CoreWebView2.ExecuteScriptAsync("document.querySelector('#run').click()");
+            await WaitUntil(async () => await commandWeb.CoreWebView2.ExecuteScriptAsync("document.querySelector('#output').textContent.includes('Result: short') && !document.querySelector('#output').textContent.includes('Result: long')") == "true", "parallel short response", commandHost);
+            await WaitUntil(async () => await commandWeb.CoreWebView2.ExecuteScriptAsync("!document.querySelector('#run').disabled") == "true", "parallel long response", commandHost);
+            await WaitUntil(async () => await commandWeb.CoreWebView2.ExecuteScriptAsync("document.querySelector('#output').textContent.includes('Event: finished') && document.querySelector('#output').textContent.includes('Result: long')") == "true", "worker events", commandHost);
+            observations.Add("Command screen received out-of-order independent responses and backend worker events.");
+            await commandWeb.CoreWebView2.ExecuteScriptAsync("document.querySelector('#output').textContent = ''; document.querySelector('#run').click(); document.querySelector('#cancel').click()");
+            await WaitUntil(async () => await commandWeb.CoreWebView2.ExecuteScriptAsync("!document.querySelector('#run').disabled && document.querySelector('#output').textContent.includes('Cancelled') && document.querySelector('#output').textContent.includes('Result: short')") == "true", "targeted command cancellation", commandHost);
+            observations.Add("Cancelling the long command left the short command running successfully.");
             Save(true, null);
         }
         catch (Exception ex) { Save(false, ex.ToString()); }

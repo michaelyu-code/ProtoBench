@@ -15,6 +15,7 @@ internal sealed class PluginWebViewHost : Grid
     private readonly PluginToolWorkspace workspace;
     private readonly PluginWebView definition;
     private bool initializing, closed;
+    private int pendingEvents;
 
     public PluginWebViewHost(PluginToolWorkspace workspace, PluginWebView definition)
     {
@@ -26,6 +27,7 @@ internal sealed class PluginWebViewHost : Grid
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(web, workspace.Title + " custom tool");
         Loaded += Initialize;
         workspace.Disposed += Close;
+        workspace.WebMessageReceived += ReceiveEvent;
     }
 
     private async void Initialize(object sender, RoutedEventArgs args)
@@ -74,10 +76,30 @@ internal sealed class PluginWebViewHost : Grid
 
     private void ShowError(string message) { error.Text = message; error.Visibility = Visibility.Visible; }
 
+    private void ReceiveEvent(object? sender, string message)
+    {
+        // Sessions may publish from TCP workers. WebView2 must only be touched on its UI thread.
+        if (Interlocked.Increment(ref pendingEvents) > 256)
+        {
+            Interlocked.Decrement(ref pendingEvents);
+            return;
+        }
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                if (!closed && web.CoreWebView2 is { } core) core.PostWebMessageAsJson(message);
+            }
+            catch (Exception ex) { if (!closed) ShowError($"Custom screen event failed: {ex.Message}"); }
+            finally { Interlocked.Decrement(ref pendingEvents); }
+        })) Interlocked.Decrement(ref pendingEvents);
+    }
+
     private void Close(object? sender, EventArgs args)
     {
         closed = true;
         workspace.Disposed -= Close;
+        workspace.WebMessageReceived -= ReceiveEvent;
         Loaded -= Initialize;
         web.Close();
     }

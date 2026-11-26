@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.34: concurrent SDK screen commands — 26 November 2026
+
+Added optional `IPluginCommandSession` in portable SDK 2.0.4. Commands own independent argument snapshots, JSON results and cancellation tokens; sessions queue commands by default and explicitly opt into parallel execution. Legacy execution stays serial and cannot overlap commands in the same session. Active command IDs are unique, pending work is bounded, and closing a workspace cancels commands and waits for handlers and cancellation callbacks before disposing its session. Worker events are serialized and marshalled to WebView2 with bounded pending delivery. API version 2 and assembly identity 2.0.0.0 are retained.
+
+The application Release suite passed 355 tests with the existing opt-in large-file test skipped. Fourteen new cases cover out-of-order responses, state isolation, sequential queuing, queued/running cancellation, duplicate IDs, unsupported/invalid requests, legacy overlap, pending limits, event isolation and shutdown including repeated cancellation with unfinished callbacks. The production x64 Release build passed with zero warnings/errors. The native WebView smoke test passed the existing screen/navigation checks plus the new portable sample's overlapping responses, worker events and targeted cancellation. The full local developer kit built successfully with matching SDK/app DLL hashes and four independently compiled, packaged samples, including `CommandScreenPlugin`. No release was published.
+
 ## Version 2.0.33: SDK HTML-screen navigation fix — 26 November 2026
 
 Reproduced the SDK counter sample failing with “Could not load the custom screen: OperationCanceled” in the actual WinUI/WebView2 host. `NavigateToString` raised NavigationStarting with a `data:text/html;charset=utf-8;base64,...` URL, which the host's about:blank-only filter cancelled. The host now allows only the exact encoded plugin document alongside about:blank. Other pages remain blocked, and completion events for deliberately blocked navigation no longer show a screen-load failure. Bumped package/file version to 2.0.33 while retaining assembly identity 2.0.0.0.

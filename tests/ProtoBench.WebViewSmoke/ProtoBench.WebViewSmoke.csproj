@@ -16,5 +16,6 @@
     <Compile Include="../../src/ProtoBench.Desktop/Features/Plugins/PluginWebViewHost.cs" Link="Host/PluginWebViewHost.cs" />
     <Compile Include="../../src/ProtoBench.Desktop/Features/Plugins/PluginWebViewNavigation.cs" Link="Host/PluginWebViewNavigation.cs" />
     <Compile Include="../../samples/plugins/WinUIExamplePlugin/Plugin.cs" Link="Sample/Plugin.cs" />
+    <Compile Include="../../samples/plugins/CommandScreenPlugin/Plugin.cs" Link="Sample/CommandPlugin.cs" />
   </ItemGroup>
 </Project>
