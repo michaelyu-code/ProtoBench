@@ -16,6 +16,10 @@ internal sealed record TextCompareVirtualLayout(IReadOnlyList<TextCompareLineSpa
             if (row.Right is { } r) previousRight = r.Number;
             Add(left, previousLeft, height - a); Add(right, previousRight, height - b);
         }
+        // An empty editor still has a caret line, but no source row to align.
+        // Keep that line at the top so the next paste starts in a visible input.
+        if (previousLeft == 0) left.Clear();
+        if (previousRight == 0) right.Clear();
         return new(left.Select(p => new TextCompareLineSpace(p.Key.Line, p.Value, p.Key.Above)).ToArray(),
             right.Select(p => new TextCompareLineSpace(p.Key.Line, p.Value, p.Key.Above)).ToArray());
 

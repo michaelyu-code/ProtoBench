@@ -5,6 +5,22 @@ namespace ProtoBench.Application.Tests;
 
 public sealed class TextCompareVirtualLayoutTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EmptyPaneKeepsItsFirstEditableLineAtTheTop(bool emptyLeft)
+    {
+        var text = string.Join('\n', Enumerable.Range(1, 2060).Select(i => $"line {i}"));
+        var document = TextCompareDocument.Create(emptyLeft ? "" : text, emptyLeft ? text : "", new());
+        var heights = Enumerable.Repeat(22d, 2060).ToArray();
+        var layout = TextCompareVirtualLayout.Create(document, emptyLeft ? [22] : heights, emptyLeft ? heights : [22]);
+
+        Assert.Empty(layout.Left);
+        Assert.Empty(layout.Right);
+        Assert.Equal(2060, document.Rows.Count);
+        Assert.Single(document.Changes);
+    }
+
     [Fact]
     public void ThirtyThousandEqualLinesNeedNoDisplaySpacers()
     {
