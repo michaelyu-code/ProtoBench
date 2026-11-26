@@ -5,6 +5,29 @@ namespace ProtoBench.Desktop.Shell;
 /// <summary>Distinct system glyphs for built-in tools and navigation categories.</summary>
 internal static class NavigationIcons
 {
+    public static Microsoft.UI.Xaml.Controls.StackPanel CustomBadge(bool showLabel = true)
+    {
+        var badge = new Microsoft.UI.Xaml.Controls.StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 4 };
+        badge.Children.Add(new Microsoft.UI.Xaml.Controls.FontIcon { Glyph = "\uEA86", FontSize = 12 });
+        if (showLabel) badge.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Custom tool", FontSize = 12 });
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(badge, "Custom tool · Provided by a developer plugin");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(badge, "Custom tool provided by a developer plugin");
+        return badge;
+    }
+
+    public static object ToolLabel(ToolDescriptor tool)
+    {
+        if (!tool.IsCustom) return tool.Name;
+        var label = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 8 };
+        label.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition());
+        label.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = Microsoft.UI.Xaml.GridLength.Auto });
+        label.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = tool.Name, TextTrimming = Microsoft.UI.Xaml.TextTrimming.CharacterEllipsis });
+        var badge = CustomBadge(false);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(badge, 1);
+        label.Children.Add(badge);
+        return label;
+    }
+
     // Segoe Fluent / MDL2 names and code points:
     // https://learn.microsoft.com/windows/apps/design/iconography/segoe-fluent-icons-font
     public const string BaseConverter = "\uE8B1"; // Shuffle

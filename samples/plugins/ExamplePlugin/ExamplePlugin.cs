@@ -15,6 +15,7 @@ public sealed class ExamplePlugin : IToolkitPlugin
         new("example.sha256", "SHA-256 text", "Calculate a SHA-256 digest of UTF-8 text.",
             [new("text", "Text", ToolInputKind.Multiline, Description: "Whitespace and line breaks are included exactly as entered.")],
             () => new HashSession(), ActionLabel: "Calculate", Help: "Sample developer plugin. Input is processed locally and is not saved.")
+        { Category = PluginToolCategory.Calculators }
     ];
     public IEnumerable<ILogParser> Parsers => [new ExampleLogParser()];
     public IEnumerable<ProtoBench.Generation.Abstractions.IFileGenerator> Generators =>

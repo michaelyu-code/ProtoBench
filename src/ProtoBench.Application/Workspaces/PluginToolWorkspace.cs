@@ -15,6 +15,7 @@ public sealed class PluginToolWorkspace : ToolWorkspace
     private IReadOnlyList<ParsedField> fields = [];
     private PluginToolResult? result;
     private bool disposed, sessionDisposed;
+    public event EventHandler? Disposed;
     public string Output { get => output; private set => SetProperty(ref output, value); }
     public IReadOnlyList<ParsedField> Fields { get => fields; private set => SetProperty(ref fields, value); }
     public PluginToolResult? Result { get => result; private set => SetProperty(ref result, value); }
@@ -87,6 +88,8 @@ public sealed class PluginToolWorkspace : ToolWorkspace
         Inputs.Clear();
         ResetResult();
         if (!IsBusy) DisposeSession();
+        Disposed?.Invoke(this, EventArgs.Empty);
+        Disposed = null;
     }
     private void DisposeSession()
     {

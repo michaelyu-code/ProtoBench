@@ -132,6 +132,7 @@ public sealed partial class DashboardView : UserControl
         var title = new StackPanel { Spacing = 2 };
         title.Children.Add(new TextBlock { Text = tool.Name, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         title.Children.Add(new TextBlock { Text = tool.Category.DisplayName(), FontSize = 12, Foreground = Resource("TextFillColorSecondaryBrush") });
+        if (tool.IsCustom) title.Children.Add(NavigationIcons.CustomBadge());
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
         var star = Ui.AsyncButton(favorite ? "★" : "☆", () => vm.Settings.ToggleFavoriteAsync(tool.Id), report);

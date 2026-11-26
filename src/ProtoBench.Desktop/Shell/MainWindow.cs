@@ -141,7 +141,9 @@ public sealed partial class MainWindow : Window
             ToolTipService.SetToolTip(group, $"{category.Key.DisplayName()} · {category.Count()} tools");
             foreach (var tool in category.OrderBy(t => t.Name))
             {
-                var item = new NavigationViewItem { Content = tool.Name, Tag = tool.Id, Icon = new FontIcon { Glyph = tool.Icon } };
+                var item = new NavigationViewItem { Content = NavigationIcons.ToolLabel(tool), Tag = tool.Id, Icon = new FontIcon { Glyph = tool.Icon } };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, tool.Name + (tool.IsCustom ? ", custom tool" : ""));
+                ToolTipService.SetToolTip(item, tool.Name + (tool.IsCustom ? " · Custom tool" : ""));
                 toolItems.Add(tool.Id, item);
                 group.MenuItems.Add(item);
             }

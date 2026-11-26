@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.31 release checks — 26 November 2026
+
+Added SDK menu placement with custom-tool badges, a Custom Tools default and fallback for unknown or retired menu categories, and optional self-contained HTML screens hosted by WebView2. Web messages use the existing per-tab session validation, execution, cancellation and disposal paths. Updated the developer guide and samples. Bumped package/file version to 2.0.31 while retaining SDK assembly identity 2.0.0.0.
+
+The full local Release suite passed across all four test projects, with the existing opt-in 2 GiB test skipped. The x64 desktop Release build passed with zero warnings/errors. The native/HTML counter sample compiled against the updated SDK, and `git diff --check` passed. Live custom-screen rendering and badge appearance remain unverified. Installer packaging and publication run in GitHub Actions using the exact tagged main-build artifacts.
+
 ## Version 2.0.28 release checks — 25 November 2026
 
 Reduced the Open, Save as, Copy and encoding/newline controls above both Text Compare panes to 13-DIP text, a 28-DIP minimum height and smaller padding. Bumped package/file version to 2.0.28 while retaining assembly identity 2.0.0.0.

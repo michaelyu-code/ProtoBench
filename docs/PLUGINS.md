@@ -1,6 +1,6 @@
 # Developer plugins
 
-ProtoBench loads trusted .NET plugins for custom tools, complete log parsers, file generators and reusable message-field decoders. Plugins are loaded at startup. Use **Settings → Reload app** after importing or enabling/disabling plugins or changing custom definitions. This restarts the app; open workspaces and inputs are closed, with a confirmation when workspaces are open. Parser and message specs come from extensions or custom user definitions; the app bundles no parser specs. Custom tools appear in the **Custom Tools** sidebar group, dashboard search, favorites and new-tab picker. Each tool tab receives a separate session.
+ProtoBench loads trusted .NET plugins for custom tools, complete log parsers, file generators and reusable message-field decoders. Plugins are loaded at startup. Use **Settings → Reload app** after importing or enabling/disabling plugins or changing custom definitions. This restarts the app; open workspaces and inputs are closed, with a confirmation when workspaces are open. Parser and message specs come from extensions or custom user definitions; the app bundles no parser specs. Custom tools appear in the **Custom Tools** sidebar group by default, or in an existing menu chosen by the developer, as well as dashboard search, favorites and the new-tab picker. Each tool tab receives a separate session.
 
 ## Import and manage
 
@@ -67,7 +67,7 @@ From the repository root:
 
 Import the resulting `artifacts/example-toolkit.nstplugin`, then restart. It adds:
 
-- **SHA-256 text** under Custom Tools. `abc` produces `BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD`.
+- **SHA-256 text** under Calculators, marked as a custom tool. `abc` produces `BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD`.
 - **Example EX: log**, available in Log Parser. Paste `EX:hello` and parse automatically.
 - **Example eight-byte record**, available in File Generator. Input `{"value":"demo"}` produces ASCII `demo` plus four spaces and CRLF.
 - Decoder `example.response` and the bundled **Synthetic Term response example** profile. Select this profile manually and paste:
@@ -172,6 +172,46 @@ new ToolInput("other", "Other fields", ToolInputKind.FieldValues, "{}")
 `Integer` renders a numeric editor and validates whole numbers and optional inclusive bounds before calling the session. Inputs marked `IsAdvanced` appear in a collapsed **Optional inputs** group. `FieldValues` renders editable field/value rows with add/remove actions. The session receives a JSON object of strings; call `ToolInputValues.ParseFieldValues(inputs["other"])` to read it. Empty input means no fields. Blank and duplicate field names (ignoring case and surrounding whitespace), non-string JSON values, and malformed objects are rejected; value whitespace and leading zeroes are preserved. A required FieldValues input must contain at least one field. Clear inputs restores the declared defaults.
 
 `samples/plugins/StructuredResultsPlugin` demonstrates both views with synthetic content. The developer kit includes its standalone project, importable package, and the new contract source. The sample search filters a fixed dataset rather than implementing BM25; its decoder only defines a small synthetic DE39 mapping. Adapt the existing real search/decoder engine to return these contracts.
+
+## Existing menus and custom-tool badges
+
+Set the optional `PluginTool.Category` initializer to `PluginToolCategory.Parsers`, `Converters`, `Generators`, `Comparisons`, `Utilities`, `Payments`, or `Calculators`. The default is `CustomTools`, so existing plugins keep their placement. Unknown or retired category values also fall back to **Custom Tools**, keeping the tool available when menus change. SDK category numbers are stable identifiers and must never be renumbered or reused for different menus. The host retains the tool's own icon and adds a puzzle badge with a **Custom tool** tooltip in the sidebar, plus a puzzle icon and **Custom tool** label on the dashboard (including favorites) and in the new-tab picker. IDs remain globally unique; choosing a menu does not replace built-in tools. These additive contracts retain API version 2 and assembly identity 2.0.0.0; rebuild plugins using them against the updated SDK and run with the matching host.
+
+```csharp
+new PluginTool("acme.calculate", "My calculator", "Developer calculation.",
+    [], () => new CalculatorSession())
+{
+    Category = PluginToolCategory.Calculators
+};
+```
+
+## Custom HTML screens (WebView2)
+
+Set `PluginTool.WebView = new PluginWebView(html)` to replace the standard form with a complete HTML/CSS/JavaScript screen. This needs only the portable SDK; developers can use their preferred web UI framework and bundle its output into one HTML string. Embed resources inline (including images as data URLs); HTML must be nonempty and at most 2,000,000 UTF-8 bytes. The host uses the Microsoft Edge WebView2 Runtime and displays an error if initialization fails. Native `ICustomToolViewProvider` views take precedence when they return a view.
+
+The HTML owns layout, scrolling, accessibility, input validation feedback and responsive behavior. Include a viewport meta tag and support keyboard navigation, text scaling and light/dark themes. A separate webview and `IPluginToolSession` are created per tab; switching tabs retains the screen, and closing a tab closes its browser and cancels pending execution before disposing the session. Browser storage is shared per tool ID under the app's local-data folder; avoid storing secrets. Plugins are trusted process code, as described above. The host exposes no native host objects, blocks top-level navigation away from `about:blank`, child-frame navigation, popups and downloads, and denies browser permission requests. This surface hosts packaged screens; external websites are not supported as tool screens.
+
+Call `window.chrome.webview.postMessage` with a JavaScript **object** (do not stringify it). Each request needs a string `id` of 1–128 characters. Requests are limited to 1 MiB of text. Supported messages:
+
+| Request | Behavior | Reply |
+| --- | --- | --- |
+| `{type:'execute', id:'1', inputs:{text:'hello'}}` | Updates declared input IDs, validates inputs and runs the tab's session off the UI thread. Omitted inputs retain their current/default values. | `{type:'result', id, success, result, status}` |
+| `{type:'cancel', id:'2'}` | Requests cancellation of the current execution. | `{type:'ack', id, success:true}` |
+| `{type:'clear', id:'3'}` | Resets inputs/results to defaults while idle. | `{type:'ack', id, success:true}` |
+
+Malformed/unknown requests, unknown input IDs, non-string values and busy execute/clear requests receive `{type:'error', id, success:false, error}`. Invalid requests do not partially change inputs. Session failures, validation failures and cancellation return a result reply with `success:false`, `result:null` and an explanatory `status`. Results use camelCase JSON, including `result.text`, `result.fields`, `result.search` and `result.decoding`. Render returned content as text unless you intentionally sanitize HTML. Match responses by ID; a cancellation acknowledgement may arrive before the execution result. Disable Run while awaiting its reply, and provide Cancel for long operations.
+
+```javascript
+window.chrome.webview.addEventListener('message', ({data}) => {
+    if (data.type === 'result') {
+        document.querySelector('#output').textContent =
+            data.success ? data.result.text : data.status;
+    }
+});
+window.chrome.webview.postMessage({type:'execute', id:'1', inputs:{text:'hello'}});
+```
+
+`samples/plugins/WinUIExamplePlugin/Plugin.cs` includes a complete HTML counter alongside its native counter. Both call independent per-tab C# sessions; the HTML counter demonstrates the portable `WebView` property without implementing `ICustomToolViewProvider` for that tool. You can also embed an HTML file as an assembly resource and read it when creating the tool definition; it does not require loose package assets.
 
 ## Calculator plugins and shared utilities
 

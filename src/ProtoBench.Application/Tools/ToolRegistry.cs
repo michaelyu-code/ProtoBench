@@ -10,7 +10,24 @@ public static class ToolCategoryNames
 }
 public sealed record ToolDescriptor(string Id, string Name, string Description, ToolCategory Category, string Icon)
 {
+    public bool IsCustom { get; init; }
+    public string CustomLabel => IsCustom ? "Custom tool" : "";
+    public string CustomIcon => IsCustom ? "\uEA86" : "";
     public string CategoryName => Category.DisplayName();
+
+    public static ToolDescriptor FromPlugin(ProtoBench.PluginSdk.PluginTool tool) =>
+        new(tool.Id, tool.Name, tool.Description, tool.Category switch
+        {
+            ProtoBench.PluginSdk.PluginToolCategory.CustomTools => ToolCategory.CustomTools,
+            ProtoBench.PluginSdk.PluginToolCategory.Parsers => ToolCategory.Parsers,
+            ProtoBench.PluginSdk.PluginToolCategory.Converters => ToolCategory.Converters,
+            ProtoBench.PluginSdk.PluginToolCategory.Generators => ToolCategory.Generators,
+            ProtoBench.PluginSdk.PluginToolCategory.Comparisons => ToolCategory.Comparisons,
+            ProtoBench.PluginSdk.PluginToolCategory.Utilities => ToolCategory.Utilities,
+            ProtoBench.PluginSdk.PluginToolCategory.Payments => ToolCategory.Payments,
+            ProtoBench.PluginSdk.PluginToolCategory.Calculators => ToolCategory.Calculators,
+            _ => ToolCategory.CustomTools
+        }, tool.Icon) { IsCustom = true };
 }
 public interface IToolRegistry
 {

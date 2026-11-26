@@ -172,7 +172,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         foreach (var plugin in plugins.Plugins)
         foreach (var tool in plugin.Tools)
         {
-            collection.AddSingleton(new ToolDescriptor(tool.Id, tool.Name, tool.Description, ToolCategory.CustomTools, tool.Icon));
+            collection.AddSingleton(ToolDescriptor.FromPlugin(tool));
             collection.AddSingleton<IToolWorkspaceFactory>(new PluginToolWorkspaceFactory(tool));
             collection.AddSingleton<IWorkspaceViewFactory>(new PluginToolViewFactory(tool, plugin.Instance));
         }

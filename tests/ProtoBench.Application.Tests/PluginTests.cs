@@ -36,6 +36,7 @@ public sealed class PluginTests : IDisposable
         using var catalog = PluginCatalog.Load(packages, [], [], []);
         Assert.Empty(catalog.Diagnostics);
         var plugin = Assert.Single(catalog.Plugins);
+        Assert.Equal(PluginToolCategory.Calculators, Assert.Single(plugin.Tools).Category);
         Assert.NotEqual(System.Runtime.Loader.AssemblyLoadContext.Default,
             System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(plugin.Instance.GetType().Assembly));
         var serverProvider = Assert.Single(plugin.TelnetServers);

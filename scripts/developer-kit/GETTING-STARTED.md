@@ -24,7 +24,7 @@ For a specialized UI, build the programmatic WinUI counter:
 ./tools/Build-PluginPackage.ps1 -ProjectPath ./samples/ExampleWinUIPlugin/ExampleWinUIPlugin.csproj
 ```
 
-It produces `packages/example.winui-1.0.0.nstplugin`. Custom compiled XAML/PRI resource registration is not supplied by the host; use programmatic views as shown.
+It produces `packages/example.winui-1.0.0.nstplugin`. The native counter appears in Utilities and the HTML counter in Calculators, marked as custom tools. The HTML counter uses `PluginTool.WebView` and the host's WebView2 message bridge; HTML screens need only the portable SDK. Custom compiled XAML/PRI resource registration is not supplied by the host; use programmatic views as shown. See `docs/PLUGINS.md` for menu placement, webview messaging and lifecycle details.
 
 For the shared spec-search and field-decoder views, build the portable structured-results example:
 
@@ -50,7 +50,7 @@ For large log files and clipboard content, implement `IStreamingLogParser.ParseT
 
 If `app/` is included, launch `app/ProtoBench.exe`. Otherwise use a matching app distribution supplied by the maintainer. The test app uses the normal `%LOCALAPPDATA%/ProtoBench` settings, definitions and plugins; it does not create an isolated profile.
 
-Open **Settings → Plugins & custom tools → Import plugin…**, choose your `.nstplugin` package, and restart. Tools appear under **Custom Tools**; parsers and generators appear in their existing selectors. Open two tabs to check session independence. The custom UI counter starts at zero in each tab.
+Open **Settings → Plugin manager → Import plugin…**, choose your `.nstplugin` package, and restart. Tools appear in their declared category (or **Custom Tools** by default), with a custom-tool badge; parsers and generators appear in their existing selectors. Open two tabs to check session independence. Both counter examples start at zero in each tab.
 
 Plugins execute developer code with the app's permissions. Imports and enable/disable changes take effect after restart. To update an installed plugin, increase its numeric version in `plugin.json`, build and import the new package with the same ID, then choose **Settings → Reload app**. The app stages the replacement while the current plugin keeps running and applies it at startup. The enabled setting is preserved; equal versions and downgrades are rejected.
 

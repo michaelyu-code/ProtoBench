@@ -16,6 +16,7 @@ public sealed class PluginToolViewFactory(PluginTool tool, IToolkitPlugin plugin
     {
         var vm = (PluginToolWorkspace)workspace;
         if (plugin is ICustomToolViewProvider custom && custom.CreateView(tool.Id, vm.Session) is { } view) return view;
+        if (tool.WebView is { } web) return new PluginWebViewHost(vm, web);
         var required = new RequiredInputs(vm);
         var inputs = ToolLayout.Stack();
         var advanced = ToolLayout.Stack();

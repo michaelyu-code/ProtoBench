@@ -97,6 +97,9 @@ public sealed class PluginCatalog : IDisposable
 
     private static void ValidateTool(PluginTool tool)
     {
+        // Unknown/retired menu categories remain loadable; discovery routes them to Custom Tools.
+        if (tool.WebView is { } web && (string.IsNullOrWhiteSpace(web.Html) || System.Text.Encoding.UTF8.GetByteCount(web.Html) > 2_000_000))
+            throw new InvalidDataException("Custom webview HTML must be nonempty and at most 2,000,000 UTF-8 bytes.");
         if (string.IsNullOrWhiteSpace(tool.Name) || tool.Description is null || tool.Help is null || tool.CreateSession is null || tool.Inputs is null || tool.Inputs.Count > 64 ||
             string.IsNullOrWhiteSpace(tool.ActionLabel) || string.IsNullOrWhiteSpace(tool.Icon))
             throw new InvalidDataException("Invalid tool definition.");
