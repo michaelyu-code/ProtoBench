@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget><RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <ApplicationManifest>../../src/ProtoBench.Desktop/app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ProtoBench.Application/ProtoBench.Application.csproj" />
+    <ProjectReference Include="../../src/ProtoBench.PluginSdk.WinUI/ProtoBench.PluginSdk.WinUI.csproj" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Plugins/PluginWebViewHost.cs" Link="Host/PluginWebViewHost.cs" />
+    <Compile Include="../../src/ProtoBench.Desktop/Features/Plugins/PluginWebViewNavigation.cs" Link="Host/PluginWebViewNavigation.cs" />
+    <Compile Include="../../samples/plugins/WinUIExamplePlugin/Plugin.cs" Link="Sample/Plugin.cs" />
+  </ItemGroup>
+</Project>

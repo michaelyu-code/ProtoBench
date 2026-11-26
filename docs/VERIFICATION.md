@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.33: SDK HTML-screen navigation fix — 26 November 2026
+
+Reproduced the SDK counter sample failing with “Could not load the custom screen: OperationCanceled” in the actual WinUI/WebView2 host. `NavigateToString` raised NavigationStarting with a `data:text/html;charset=utf-8;base64,...` URL, which the host's about:blank-only filter cancelled. The host now allows only the exact encoded plugin document alongside about:blank. Other pages remain blocked, and completion events for deliberately blocked navigation no longer show a screen-load failure. Bumped package/file version to 2.0.33 while retaining assembly identity 2.0.0.0.
+
+Added a repeatable native check at `scripts/Test-PluginWebView.ps1` using the production host source and SDK sample. The Release check passed sample rendering and C# session execution, blocked external/unrelated data URLs, continued execution after blocked navigation, Unicode HTML, independent sessions and preserved state when switching screens. Its screenshot was inspected. The application Release suite passed 341 tests with the existing opt-in large-file test skipped; eight new cases cover navigation matching and blocked-completion tracking. The production x64 Release build passed with zero warnings/errors. This is a host fix; existing plugin binaries and HTML do not need changing.
+
 ## Version 2.0.32 release checks — 26 November 2026
 
 Keeps the first editable line at the top when either Text Compare pane is empty, avoiding alignment space that pushes the caret and the next paste below the visible input. Includes regression tests for both empty-pane positions. Bumped package/file version to 2.0.32 while retaining assembly identity 2.0.0.0.

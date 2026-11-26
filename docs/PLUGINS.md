@@ -418,4 +418,6 @@ The `spec-to-tool-config` skill can transcribe field descriptions and target kno
 
 `dotnet build ProtoBench.slnx` checks both portable and WinUI SDKs. `dotnet test ProtoBench.slnx` covers import rollback/path validation, incompatible API versions, disabled plugins, duplicate IDs, isolated DLL loading with shared contracts, tool execution, CRLF parser offsets, decoder/description flow, unavailable decoders, and independent session cancellation/disposal. For UI verification, import a sample, restart, open its tool through sidebar/dashboard/new-tab, run it in two tabs, and check its parser/description/decoder in Log Parser.
 
+On a Windows desktop with WebView2 Runtime installed, run `./scripts/Test-PluginWebView.ps1` for the native HTML-screen regression check. It renders the SDK counter sample, checks its session bridge, verifies blocked external/data-URL navigation leaves the screen usable, and checks Unicode HTML and independent sessions across screen switches. It writes a JSON report, screenshot and isolated browser profile under `artifacts/webview-smoke/`. This is a standalone native check; it is not part of the portable `dotnet test` suite. The host must allow the exact encoded document URL used by `NavigateToString` during startup even though the loaded document/message source is `about:blank`.
+
 

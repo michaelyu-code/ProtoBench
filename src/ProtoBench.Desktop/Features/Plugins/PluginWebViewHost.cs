@@ -42,9 +42,10 @@ internal sealed class PluginWebViewHost : Grid
             await web.EnsureCoreWebView2Async(environment);
             if (closed) return;
             var core = web.CoreWebView2;
+            var navigation = new PluginWebViewNavigation(definition.Html);
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreHostObjectsAllowed = false;
-            core.NavigationStarting += (_, e) => { if (e.Uri != "about:blank") e.Cancel = true; };
+            core.NavigationStarting += (_, e) => e.Cancel = navigation.Cancel(e.Uri, e.NavigationId);
             core.FrameNavigationStarting += (_, e) => e.Cancel = true;
             core.NewWindowRequested += (_, e) => e.Handled = true;
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
@@ -52,6 +53,7 @@ internal sealed class PluginWebViewHost : Grid
             core.WebMessageReceived += Receive;
             core.NavigationCompleted += (_, e) =>
             {
+                if (navigation.WasBlocked(e.NavigationId)) return;
                 if (!closed && !e.IsSuccess) ShowError($"Could not load the custom screen: {e.WebErrorStatus}");
             };
             web.NavigateToString(definition.Html);
