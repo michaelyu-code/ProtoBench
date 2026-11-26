@@ -1,5 +1,11 @@
 # Verification record
 
+## Version 2.0.32 release checks — 26 November 2026
+
+Keeps the first editable line at the top when either Text Compare pane is empty, avoiding alignment space that pushes the caret and the next paste below the visible input. Includes regression tests for both empty-pane positions. Bumped package/file version to 2.0.32 while retaining assembly identity 2.0.0.0.
+
+The fix and its tests were included in this session's successful full Release run (852 passed, one opt-in large-file test skipped). The versioned x64 desktop Release build passed with zero warnings/errors and reports file version 2.0.32.0. Installer packaging and publication run in GitHub Actions using the exact tagged main-build artifacts.
+
 ## Version 2.0.31 release checks — 26 November 2026
 
 Added SDK menu placement with custom-tool badges, a Custom Tools default and fallback for unknown or retired menu categories, and optional self-contained HTML screens hosted by WebView2. Web messages use the existing per-tab session validation, execution, cancellation and disposal paths. Updated the developer guide and samples. Bumped package/file version to 2.0.31 while retaining SDK assembly identity 2.0.0.0.
