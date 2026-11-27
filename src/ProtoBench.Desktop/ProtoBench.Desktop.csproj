@@ -11,6 +11,7 @@
         </PropertyGroup>
         <ItemGroup>
           <Content Update="Assets\ProtoBench.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+          <Content Update="Assets\ProtoBench.TimerRunning.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
           <Content Include="Assets\TextCompareEditor\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
         </ItemGroup>
         <PropertyGroup Condition="'$(InstallerEnabled)' == 'true'">
