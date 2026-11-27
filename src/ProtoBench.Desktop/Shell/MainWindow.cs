@@ -31,6 +31,8 @@ public sealed partial class MainWindow : Window
         ExpandedModeThresholdWidth = 1120,
         IsSettingsVisible = true,
         AlwaysShowHeader = false,
+        // The title bar already occupies its own row above navigation.
+        IsTitleBarAutoPaddingEnabled = false,
         IsPaneToggleButtonVisible = false
     };
     // TabView registers Ctrl+F4 on the entire control, including its workspace content.

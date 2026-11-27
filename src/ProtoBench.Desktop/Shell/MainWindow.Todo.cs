@@ -34,7 +34,12 @@ public sealed partial class MainWindow
         // Put timer notices above the navigation so they remain visible in every workspace.
         root.RowDefinitions.Insert(3, new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(navigation, 4);
-        var notices = ToolLayout.Stack(todoNotice, todoRunning, todoSaveError);
+        // Closed InfoBars have zero height but still count toward StackPanel spacing.
+        // Keep banners flush so this row takes no space when all notices are closed.
+        var notices = new StackPanel();
+        notices.Children.Add(todoNotice);
+        notices.Children.Add(todoRunning);
+        notices.Children.Add(todoSaveError);
         Grid.SetRow(notices, 3); root.Children.Add(notices);
         todoSaveError.ActionButton = Ui.Button("Retry saving", () => TodoAction(todos.RetrySave));
         todoRunning.Content = Ui.Row(
