@@ -73,6 +73,12 @@ public sealed partial class MainWindow : Window
         this.todos = todos;
         Title = "ProtoBench";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "ProtoBench.ico"));
+        try
+        {
+            timerTaskbarOverlay = new TaskbarClockOverlay(this,
+                ex => logger.LogWarning(ex, "Could not update the timer taskbar overlay"));
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "Could not initialize the timer taskbar overlay"); }
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1320, 900));
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -225,6 +231,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             foreach (var workspace in tabActivityHandlers.Keys.ToArray()) UntrackTabActivity(workspace);
+            timerTaskbarOverlay?.Dispose();
         };
     }
 
